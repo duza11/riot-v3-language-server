@@ -148,6 +148,15 @@ const riotV3GlobalTypes = `
 type RiotV3Selector = string | HTMLElement | NodeList | ArrayLike<HTMLElement>;
 type RiotV3Options = Record<string, any>;
 type RiotV3TagFactory = (opts?: RiotV3Options) => void;
+type RiotV3EachItem<T> =
+	T extends readonly (infer Item)[] ? Item :
+	T extends string ? string :
+	T extends Record<string, infer Item> ? Item :
+	any;
+type RiotV3EachIndex<T> =
+	T extends readonly unknown[] | string ? number :
+	T extends object ? Extract<keyof T, string> :
+	any;
 
 interface RiotV3Observable {
 	on(events: string, callback: (...args: any[]) => void): this;
@@ -1216,10 +1225,10 @@ function inferExpressionType(text: string, start: number): string {
     return 'number';
   }
   if (text[start] === '[') {
-    return 'any[]';
+    return inferArrayLiteralType(text, start);
   }
   if (text[start] === '{') {
-    return 'Record<string, any>';
+    return inferObjectLiteralType(text, start);
   }
   if (
     text.startsWith('function', start) &&
@@ -1250,6 +1259,154 @@ function inferExpressionType(text: string, start: number): string {
     }
   }
   return 'any';
+}
+
+function inferArrayLiteralType(text: string, start: number): string {
+  const end = scanBalanced(text, start, '[', ']');
+  if (end === undefined) {
+    return 'any[]';
+  }
+  const elements = splitTopLevelCommaSeparated(text.slice(start + 1, end - 1));
+  const elementTypes = elements
+    .map((element) => element.trim())
+    .filter(Boolean)
+    .map((element) => inferExpressionType(element, 0));
+  if (!elementTypes.length) {
+    return 'any[]';
+  }
+  return getUnionType(elementTypes) + '[]';
+}
+
+function inferObjectLiteralType(text: string, start: number): string {
+  const end = scanBalanced(text, start, '{', '}');
+  if (end === undefined) {
+    return 'Record<string, any>';
+  }
+  const properties = splitTopLevelCommaSeparated(text.slice(start + 1, end - 1))
+    .map(parseObjectLiteralProperty)
+    .filter(
+      (
+        property,
+      ): property is {
+        name: string;
+        value: string;
+      } => property !== undefined,
+    );
+  if (!properties.length) {
+    return 'Record<string, any>';
+  }
+  return `{ ${properties
+    .map(
+      (property) =>
+        `${property.name}: ${inferExpressionType(property.value, 0)};`,
+    )
+    .join(' ')} }`;
+}
+
+function splitTopLevelCommaSeparated(text: string): string[] {
+  const segments: string[] = [];
+  let segmentStart = 0;
+  for (let offset = 0; offset <= text.length; ) {
+    if (offset === text.length) {
+      segments.push(text.slice(segmentStart, offset));
+      break;
+    }
+    const char = text[offset];
+    if (char === "'" || char === '"' || char === '`') {
+      offset = scanString(text, offset);
+      continue;
+    }
+    if (
+      char === '/' &&
+      (text[offset + 1] === '/' || text[offset + 1] === '*')
+    ) {
+      offset = scanComment(text, offset);
+      continue;
+    }
+    if (char === '(') {
+      offset = scanBalanced(text, offset, '(', ')') ?? text.length;
+      continue;
+    }
+    if (char === '[') {
+      offset = scanBalanced(text, offset, '[', ']') ?? text.length;
+      continue;
+    }
+    if (char === '{') {
+      offset = scanBalanced(text, offset, '{', '}') ?? text.length;
+      continue;
+    }
+    if (char === ',') {
+      segments.push(text.slice(segmentStart, offset));
+      segmentStart = offset + 1;
+    }
+    offset++;
+  }
+  return segments;
+}
+
+function parseObjectLiteralProperty(
+  text: string,
+): { name: string; value: string } | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return;
+  }
+  const colon = findTopLevelPropertyColon(trimmed);
+  if (colon === undefined) {
+    if (isValidIdentifier(trimmed)) {
+      return { name: trimmed, value: 'undefined' };
+    }
+    return;
+  }
+  const rawName = trimmed.slice(0, colon).trim();
+  const value = trimmed.slice(colon + 1).trim();
+  if (!value) {
+    return;
+  }
+  const name = formatObjectLiteralTypePropertyName(rawName);
+  return name ? { name, value } : undefined;
+}
+
+function findTopLevelPropertyColon(text: string): number | undefined {
+  for (let offset = 0; offset < text.length; ) {
+    const char = text[offset];
+    if (char === "'" || char === '"' || char === '`') {
+      offset = scanString(text, offset);
+      continue;
+    }
+    if (char === '(') {
+      offset = scanBalanced(text, offset, '(', ')') ?? text.length;
+      continue;
+    }
+    if (char === '[') {
+      offset = scanBalanced(text, offset, '[', ']') ?? text.length;
+      continue;
+    }
+    if (char === '{') {
+      offset = scanBalanced(text, offset, '{', '}') ?? text.length;
+      continue;
+    }
+    if (char === ':') {
+      return offset;
+    }
+    offset++;
+  }
+}
+
+function formatObjectLiteralTypePropertyName(text: string): string | undefined {
+  if (isValidIdentifier(text)) {
+    return text;
+  }
+  if (
+    (text[0] === "'" || text[0] === '"') &&
+    text[text.length - 1] === text[0]
+  ) {
+    return text;
+  }
+}
+
+function getUnionType(types: string[]): string {
+  return [...new Set(types)].join(' | ');
 }
 
 function isNumberLiteralStart(text: string, start: number): boolean {
@@ -2024,6 +2181,10 @@ interface EachScope {
 interface EachLocalName {
   name: string;
   sourceOffset: number;
+  kind: 'item' | 'index';
+  collectionOffset: number;
+  collectionText: string;
+  collectionLocalNames: string[];
 }
 
 interface AttributeExpression {
@@ -2163,12 +2324,19 @@ function getEachScopes(
       continue;
     }
 
+    const collectionLocalNames = getLocalNamesForOffset(
+      eachExpression.collectionOffset,
+      scopes,
+    );
     scopes.push({
       start: node.start,
       end: node.end,
       sourceOffset: eachAttribute.sourceOffset,
       depth: getContainingEachScopes(node.start, scopes).length,
-      localNames: eachExpression.localNames,
+      localNames: eachExpression.localNames.map((localName) => ({
+        ...localName,
+        collectionLocalNames,
+      })),
     });
   }
   return scopes;
@@ -2302,11 +2470,18 @@ function parseEachExpression(
   if (!collectionText) {
     return;
   }
+  const collectionOffset =
+    trimmedSourceOffset + separator.end + collectionLeadingWhitespace;
 
   return {
-    localNames,
-    collectionOffset:
-      trimmedSourceOffset + separator.end + collectionLeadingWhitespace,
+    localNames: localNames.map((localName, index) => ({
+      ...localName,
+      kind: index === 0 ? 'item' : 'index',
+      collectionOffset,
+      collectionText,
+      collectionLocalNames: [],
+    })),
+    collectionOffset,
     collectionText,
   };
 }
@@ -2528,6 +2703,10 @@ function parseEachLocalNames(
         name,
         sourceOffset:
           localSourceOffset + segmentStart + candidateLeadingWhitespace,
+        kind: localNames.length === 0 ? 'item' : 'index',
+        collectionOffset: sourceOffset,
+        collectionText: '',
+        collectionLocalNames: [],
       });
     }
     if (comma === -1) {
@@ -2629,9 +2808,11 @@ function createTemplateVirtualCode(
     segments.push({
       text: eachContext ? `{\n(function(this: ${eachContext}) {\n` : '{\n',
     });
-    for (const localName of expression.localNames) {
-      segments.push({ text: `const ${localName} = undefined as any;\n` });
-    }
+    segments.push(
+      ...generateEachLocalDeclarationSegments(
+        getUsedEachLocalDefinitions(expression),
+      ),
+    );
     segments.push({ text: 'void (' });
     segments.push(...generateTemplateExpressionSegments(expression));
     segments.push({ text: eachContext ? ');\n});\n}\n' : ');\n}\n' });
@@ -2716,6 +2897,122 @@ function createTemplateVirtualCode(
     ],
     embeddedCodes: [],
   };
+}
+
+function getUsedEachLocalDefinitions(
+  expression: TemplateExpression,
+): EachLocalName[] {
+  const visibleDefinitions = getVisibleEachLocalDefinitions(expression);
+  const usedDefinitions = new Map<number, EachLocalName>();
+  addUsedEachLocalDefinitions(
+    expression.text,
+    expression.sourceOffset,
+    expression.localNames,
+    visibleDefinitions,
+    usedDefinitions,
+  );
+  return visibleDefinitions.filter((localName) =>
+    usedDefinitions.has(localName.sourceOffset),
+  );
+}
+
+function getVisibleEachLocalDefinitions(
+  expression: TemplateExpression,
+): EachLocalName[] {
+  const definitions: EachLocalName[] = [];
+  for (const localName of expression.localDefinitions) {
+    const existingIndex = definitions.findIndex(
+      (definition) => definition.name === localName.name,
+    );
+    if (existingIndex === -1) {
+      definitions.push(localName);
+    } else {
+      definitions[existingIndex] = localName;
+    }
+  }
+  return definitions;
+}
+
+function addUsedEachLocalDefinitions(
+  text: string,
+  sourceOffset: number,
+  localNames: string[],
+  localDefinitions: EachLocalName[],
+  usedDefinitions: Map<number, EachLocalName>,
+): void {
+  const expression: TemplateExpression = {
+    kind: 'expression',
+    sourceOffset,
+    text,
+    localNames,
+    localDefinitions,
+    eachDepth: undefined,
+  };
+  for (let offset = 0; offset < text.length; ) {
+    const char = text[offset];
+    if (!isIdentifierStart(char)) {
+      offset = scanTemplateNonIdentifier(text, offset);
+      continue;
+    }
+    const start = offset;
+    offset++;
+    while (offset < text.length && isIdentifierPart(text[offset])) {
+      offset++;
+    }
+    const identifier = text.slice(start, offset);
+    const localName = getResolvedEachLocalName(expression, start, identifier);
+    if (!localName || usedDefinitions.has(localName.sourceOffset)) {
+      continue;
+    }
+    usedDefinitions.set(localName.sourceOffset, localName);
+    addUsedEachLocalDefinitions(
+      localName.collectionText,
+      localName.collectionOffset,
+      localName.collectionLocalNames,
+      localDefinitions,
+      usedDefinitions,
+    );
+  }
+}
+
+function generateEachLocalDeclarationSegments(
+  localNames: EachLocalName[],
+): GeneratedSegment[] {
+  const segments: GeneratedSegment[] = [];
+  const collectionNames = new Map<string, string>();
+  for (const localName of localNames) {
+    const collectionKey =
+      localName.collectionOffset + '\0' + localName.collectionText;
+    let collectionName = collectionNames.get(collectionKey);
+    if (!collectionName) {
+      collectionName = `__riot_v3_each_collection_${collectionNames.size}`;
+      collectionNames.set(collectionKey, collectionName);
+      segments.push({ text: `const ${collectionName} = ` });
+      segments.push(
+        ...generateTemplateExpressionSegments({
+          kind: 'expression',
+          sourceOffset: localName.collectionOffset,
+          text: localName.collectionText,
+          localNames: localName.collectionLocalNames,
+          localDefinitions: [],
+          eachDepth: undefined,
+        }),
+      );
+      segments.push({ text: ';\n' });
+    }
+    const helper =
+      localName.kind === 'item' ? 'RiotV3EachItem' : 'RiotV3EachIndex';
+    segments.push({ text: 'const ' });
+    segments.push({
+      text: localName.name,
+      sourceOffset: localName.sourceOffset,
+      length: localName.name.length,
+    });
+    segments.push({
+      text: ` = undefined as unknown as ${helper}<typeof ${collectionName}>;\n`,
+    });
+  }
+  return segments;
 }
 
 function generateTemplateExpressionSegments(
