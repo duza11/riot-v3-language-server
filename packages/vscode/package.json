@@ -1,0 +1,67 @@
+{
+  "private": true,
+  "name": "riot-v3-language-features",
+  "version": "0.0.1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/duza11/riot-v3-language-server.git",
+    "directory": "packages/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/duza11/riot-v3-language-server/issues"
+  },
+  "homepage": "https://github.com/duza11/riot-v3-language-server#readme",
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "riot",
+    "riotjs",
+    "riot.js",
+    "riot-v3",
+    "tag",
+    "language-server",
+    "lsp",
+    "volar"
+  ],
+  "displayName": "Riot.js v3 Language Features",
+  "description": "Language support for Riot.js v3 single-file components",
+  "author": "duza11",
+  "publisher": "duza11",
+  "engines": {
+    "vscode": "^1.125.0"
+  },
+  "activationEvents": [
+    "onLanguage:riot_v3"
+  ],
+  "main": "./dist/client.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "riot_v3",
+        "aliases": [
+          "Riot.js v3",
+          "Riot v3"
+        ],
+        "extensions": [
+          ".tag"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node scripts/build -- --minify",
+    "watch": "pnpm run build -- --watch",
+    "pack": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build && vsce package --pre-release --no-dependencies",
+    "pack:labs": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build -- --volar-labs && vsce package --pre-release --no-dependencies",
+    "release": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build && vsce publish --pre-release --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.125.0",
+    "@volar/language-server": "~2.4.28",
+    "@volar/vscode": "~2.4.28",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "0.28.1"
+  }
+}

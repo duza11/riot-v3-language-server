@@ -1,0 +1,10 @@
+packages:
+  - 'packages/*'
+minimumReleaseAge: 4320
+minimumReleaseAgeStrict: true
+minimumReleaseAgeIgnoreMissingTime: false
+strictDepBuilds: true
+allowBuilds:
+  '@vscode/vsce-sign': false
+  esbuild: true
+  keytar: false

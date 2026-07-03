@@ -1,0 +1,9 @@
+scripts/**
+src/**
+node_modules/**
+*.vsix
+tsconfig.json
+*.tsbuildinfo
+dist/server.js
+dist/**/*.map
+server/**/*.map

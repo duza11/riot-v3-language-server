@@ -1,0 +1,26 @@
+{
+  "private": true,
+  "packageManager": "pnpm@11.5.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/duza11/riot-v3-language-server.git"
+  },
+  "scripts": {
+    "build": "pnpm --filter @duza11/riot-v3-language-server build && pnpm --filter riot-v3-language-features build",
+    "check": "biome ci .",
+    "check:packages": "node scripts/check-package-contents.js",
+    "check:versions": "node scripts/check-version-sync.js",
+    "check:write": "biome check --write .",
+    "test": "vitest run",
+    "watch": "pnpm --parallel --filter @duza11/riot-v3-language-server --filter riot-v3-language-features watch",
+    "pack": "pnpm --filter riot-v3-language-features run pack",
+    "pack:labs": "pnpm --filter riot-v3-language-features run pack:labs",
+    "release": "pnpm --filter riot-v3-language-features run release"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.1",
+    "@types/node": "latest",
+    "typescript": "latest",
+    "vitest": "^4.1.9"
+  }
+}

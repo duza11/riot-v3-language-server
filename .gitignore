@@ -1,0 +1,9 @@
+out
+dist
+packages/vscode/server
+node_modules
+.direnv
+*.tsbuildinfo
+*.vsix
+AGENTS.md
+.DS_Store
