@@ -1066,15 +1066,20 @@ function scanThisAlias(
   start: number,
 ): { name: string; end: number } | undefined {
   const keyword = getDeclarationKeywordAt(text, start);
-  if (!keyword) {
+  let cursor = start;
+  if (keyword) {
+    cursor += keyword.length;
+    if (!/\s/.test(text[cursor] ?? '')) {
+      return;
+    }
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+  } else if (
+    !isIdentifierStart(text[cursor]) ||
+    isIdentifierPart(text[cursor - 1] ?? '')
+  ) {
     return;
-  }
-  let cursor = start + keyword.length;
-  if (!/\s/.test(text[cursor] ?? '')) {
-    return;
-  }
-  while (cursor < text.length && /\s/.test(text[cursor])) {
-    cursor++;
   }
   if (!isIdentifierStart(text[cursor])) {
     return;
@@ -1097,7 +1102,8 @@ function scanThisAlias(
   }
   if (
     !text.startsWith('this', cursor) ||
-    isIdentifierPart(text[cursor + 'this'.length] ?? '')
+    isIdentifierPart(text[cursor + 'this'.length] ?? '') ||
+    text[cursor + 'this'.length] === '.'
   ) {
     return;
   }
@@ -1322,6 +1328,8 @@ function scanRiotV3MethodProperties(
         offset = method.bodyEnd;
         continue;
       }
+      offset = scanIdentifierEnd(text, offset);
+      continue;
     }
 
     if (char === '(') {
@@ -1802,6 +1810,8 @@ function generateScriptSegments(
         lastMappedOffset = method.bodyEnd;
         continue;
       }
+      offset = scanIdentifierEnd(text, offset);
+      continue;
     }
 
     if (char === '(') {

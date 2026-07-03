@@ -64,6 +64,29 @@ describe('RiotV3VirtualCode', () => {
       expect(getEmbeddedText(code, 'template')).toContain('this.message');
     });
 
+    it('infers template methods from script this-alias function assignments', () => {
+      const code = createVirtualCode(`
+<demo-widget>
+  <p>{ sum }</p>
+  <script>
+    self = this
+    self.sum = function (a, b) {
+      return a + b
+    }
+  </script>
+</demo-widget>
+`);
+
+      const globals = getEmbeddedText(code, 'riot_v3_globals');
+      expect(globals).toContain('sum: (...args: any[]) => any;');
+      expect(globals).not.toContain('unction: (...args: any[]) => any;');
+      expect(getEmbeddedText(code, 'template')).toContain('this.sum');
+      expect(getEmbeddedText(code, 'script_0')).toContain(
+        'self.sum = function (a, b) {',
+      );
+      expect(getEmbeddedText(code, 'script_0')).not.toContain('this.unction');
+    });
+
     it('maps empty template expressions to this-member completion context', () => {
       const code = createVirtualCode(`
 <demo-widget>
@@ -734,6 +757,34 @@ describe('RiotV3VirtualCode', () => {
       expect(templateEdits.map((edit) => edit.start)).toEqual(
         scriptEdits.map((edit) => edit.start),
       );
+    });
+
+    it('adds reference ranges between script this-alias function assignments and template references', () => {
+      const source = `
+<demo-widget>
+  <p>{ sum }</p>
+  <script>
+    self = this
+    self.sum = function(a, b) {
+      return a + b
+    }
+  </script>
+</demo-widget>
+`;
+      const scriptOffset = source.indexOf('self.sum') + 'self.'.length;
+      const templateOffset = source.indexOf('{ sum }') + '{ '.length;
+      const expectedOffsets = [scriptOffset, templateOffset];
+
+      expect(
+        getRiotV3ReferenceRanges(source, scriptOffset).map(
+          (reference) => reference.start,
+        ),
+      ).toEqual(expectedOffsets);
+      expect(
+        getRiotV3ReferenceRanges(source, templateOffset).map(
+          (reference) => reference.start,
+        ),
+      ).toEqual(expectedOffsets);
     });
 
     it('adds rename edits across template references, script blocks, and open syntax aliases', () => {
