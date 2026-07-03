@@ -1315,6 +1315,11 @@ function scanRiotV3MethodProperties(
       braceDepth === 0 &&
       isIdentifierStart(char)
     ) {
+      const functionEnd = scanFunctionLikeEnd(text, offset);
+      if (functionEnd !== undefined) {
+        offset = functionEnd;
+        continue;
+      }
       const method = scanRiotV3MethodDefinition(text, offset);
       if (method) {
         const name = text.slice(method.nameStart, method.nameEnd);
@@ -1781,6 +1786,11 @@ function generateScriptSegments(
       braceDepth === 0 &&
       isIdentifierStart(char)
     ) {
+      const functionEnd = scanFunctionLikeEnd(text, offset);
+      if (functionEnd !== undefined) {
+        offset = functionEnd;
+        continue;
+      }
       const method = scanRiotV3MethodDefinition(text, offset);
       if (method) {
         pushMappedScriptSegment(
@@ -1908,6 +1918,48 @@ function scanIdentifierEnd(text: string, start: number): number {
     offset++;
   }
   return offset;
+}
+
+function scanFunctionLikeEnd(text: string, start: number): number | undefined {
+  if (
+    !text.startsWith('function', start) ||
+    isIdentifierPart(text[start - 1] ?? '') ||
+    isIdentifierPart(text[start + 'function'.length] ?? '')
+  ) {
+    return;
+  }
+
+  let cursor = start + 'function'.length;
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  if (text[cursor] === '*') {
+    cursor++;
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+  }
+  if (isIdentifierStart(text[cursor])) {
+    cursor = scanIdentifierEnd(text, cursor);
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+  }
+  if (text[cursor] !== '(') {
+    return;
+  }
+  const paramsEnd = scanBalanced(text, cursor, '(', ')');
+  if (paramsEnd === undefined) {
+    return;
+  }
+  cursor = paramsEnd;
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  if (text[cursor] !== '{') {
+    return;
+  }
+  return scanBalanced(text, cursor, '{', '}');
 }
 
 function scanBalanced(

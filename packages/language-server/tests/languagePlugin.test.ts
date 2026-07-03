@@ -87,6 +87,27 @@ describe('RiotV3VirtualCode', () => {
       expect(getEmbeddedText(code, 'script_0')).not.toContain('this.unction');
     });
 
+    it('keeps script function declarations as local functions', () => {
+      const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    function greet () {
+      console.log('Hello')
+    }
+  </script>
+</demo-widget>
+`);
+
+      const globals = getEmbeddedText(code, 'riot_v3_globals');
+      expect(globals).not.toContain('greet: (...args: any[]) => any;');
+      expect(getEmbeddedText(code, 'script_0')).toContain(
+        'function greet () {',
+      );
+      expect(getEmbeddedText(code, 'script_0')).not.toContain(
+        'this.greet = function',
+      );
+    });
+
     it('maps empty template expressions to this-member completion context', () => {
       const code = createVirtualCode(`
 <demo-widget>
