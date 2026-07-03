@@ -29,6 +29,70 @@ function getInterfaceBody(text: string, name: string): string {
   return match[1];
 }
 
+function getTemplateIdentifierType(
+  code: RiotV3VirtualCode,
+  marker: string,
+  identifier: string,
+): string {
+  const text =
+    getEmbeddedText(code, 'riot_v3_globals') +
+    '\n' +
+    getEmbeddedText(code, 'template');
+  const markerOffset = text.indexOf(marker);
+  if (markerOffset === -1) {
+    throw new Error(`Marker "${marker}" was not found.`);
+  }
+  const markerIdentifierOffset = marker.indexOf(identifier);
+  if (markerIdentifierOffset === -1) {
+    throw new Error(`Identifier "${identifier}" was not found.`);
+  }
+  const identifierOffset = markerOffset + markerIdentifierOffset;
+  const fileName = '/virtual/riot-template.ts';
+  const options: ts.CompilerOptions = {
+    strict: true,
+    noEmit: true,
+    lib: ['lib.esnext.d.ts', 'lib.dom.d.ts'],
+  };
+  const host = ts.createCompilerHost(options);
+  const getSourceFile = host.getSourceFile.bind(host);
+  host.getSourceFile = (
+    requestedFileName,
+    languageVersion,
+    onError,
+    shouldCreateNewSourceFile,
+  ) =>
+    requestedFileName === fileName
+      ? ts.createSourceFile(requestedFileName, text, languageVersion, true)
+      : getSourceFile(
+          requestedFileName,
+          languageVersion,
+          onError,
+          shouldCreateNewSourceFile,
+        );
+  const program = ts.createProgram([fileName], options, host);
+  const checker = program.getTypeChecker();
+  const sourceFile = program.getSourceFile(fileName);
+  if (!sourceFile) {
+    throw new Error('Virtual TypeScript source was not created.');
+  }
+  let result: string | undefined;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isIdentifier(node) &&
+      node.getStart(sourceFile) === identifierOffset
+    ) {
+      result = checker.typeToString(checker.getTypeAtLocation(node));
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  if (!result) {
+    throw new Error(`Type for "${identifier}" was not found.`);
+  }
+  return result;
+}
+
 describe('RiotV3VirtualCode', () => {
   describe('script and template virtual code', () => {
     it('infers template variables from script this-property assignments', () => {
@@ -482,7 +546,12 @@ describe('RiotV3VirtualCode', () => {
       const template = getEmbeddedText(code, 'template');
       expect(template).toContain('function(this: RiotV3EachContext_0)');
       expect(template).toContain('this.items');
-      expect(template).toContain('const item = undefined as any;');
+      expect(template).toContain(
+        'const __riot_v3_each_collection_0 = this.items;',
+      );
+      expect(template).toContain(
+        'const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_0>;',
+      );
       expect(template).toContain('item.visible');
       expect(template).toContain('item.name');
       expect(template).toContain('this.items.length');
@@ -502,11 +571,72 @@ describe('RiotV3VirtualCode', () => {
       const template = getEmbeddedText(code, 'template');
       expect(template).toContain('function(this: RiotV3EachContext_0)');
       expect(template).toContain('this.items');
-      expect(template).toContain('const item = undefined as any;');
-      expect(template).toContain('const i = undefined as any;');
+      expect(template).toContain(
+        'const __riot_v3_each_collection_0 = this.items;',
+      );
+      expect(template).toContain(
+        'const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_0>;',
+      );
+      expect(template).toContain(
+        'const i = undefined as unknown as RiotV3EachIndex<typeof __riot_v3_each_collection_0>;',
+      );
       expect(template).toContain('item.name');
       expect(template).not.toMatch(/\bthis\.item\b/);
       expect(template).not.toMatch(/\bthis\.i\b/);
+    });
+
+    it('infers Riot v3 each item and index types from array collections', () => {
+      const code = createVirtualCode(`
+<demo-widget>
+  <ul>
+    <li each={ item, i in items }>{ item.name } { item.visible } { i.toFixed() }</li>
+  </ul>
+  <script>
+    this.items = [{ name: 'Alice', visible: true }]
+  </script>
+</demo-widget>
+`);
+
+      const globals = getEmbeddedText(code, 'riot_v3_globals');
+      expect(globals).toContain(
+        'items: { name: string; visible: boolean; }[];',
+      );
+      expect(getTemplateIdentifierType(code, 'void (item.name)', 'item')).toBe(
+        '{ name: string; visible: boolean; }',
+      );
+      expect(getTemplateIdentifierType(code, 'i.toFixed', 'i')).toBe('number');
+    });
+
+    it('infers nested Riot v3 each item types from parent each locals', () => {
+      const code = createVirtualCode(`
+<demo-widget>
+  <ul>
+    <li each={ group in groups }>
+      <span each={ item in group.items }>{ group.name } { item.label }</span>
+    </li>
+  </ul>
+  <script>
+    this.groups = [{ name: 'Group', items: [{ label: 'Child' }] }]
+  </script>
+</demo-widget>
+`);
+
+      const globals = getEmbeddedText(code, 'riot_v3_globals');
+      const template = getEmbeddedText(code, 'template');
+      expect(globals).toContain(
+        'groups: { name: string; items: { label: string; }[]; }[];',
+      );
+      expect(
+        template,
+      ).not.toContain(`const __riot_v3_each_collection_1 = group.items;
+const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_1>;
+void (group.name);`);
+      expect(
+        getTemplateIdentifierType(code, 'void (group.name)', 'group'),
+      ).toBe('{ name: string; items: { label: string; }[]; }');
+      expect(getTemplateIdentifierType(code, 'void (item.label)', 'item')).toBe(
+        '{ label: string; }',
+      );
     });
 
     it('supports Riot v3 each collection shorthand', () => {
