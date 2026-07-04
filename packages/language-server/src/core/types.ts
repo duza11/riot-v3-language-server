@@ -30,6 +30,12 @@ export interface TextRange {
   end: number;
 }
 
+export interface ScriptProperty {
+  name: string;
+  sourceOffset: number;
+  typeName: string;
+}
+
 export type ScriptLanguageId =
   | 'javascript'
   | 'javascriptreact'
