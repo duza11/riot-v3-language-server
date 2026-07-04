@@ -1,4 +1,5 @@
 import type { CodeMapping } from '@volar/language-core';
+import type * as html from 'vscode-html-languageservice';
 
 export interface RiotV3RenameTextEdit {
   start: number;
@@ -27,4 +28,27 @@ export interface GeneratedSegment {
 export interface TextRange {
   start: number;
   end: number;
+}
+
+export type ScriptLanguageId =
+  | 'javascript'
+  | 'javascriptreact'
+  | 'typescript'
+  | 'typescriptreact';
+
+export interface ScriptBlock {
+  start: number;
+  end: number;
+  languageId: ScriptLanguageId;
+}
+
+export interface RiotV3Component {
+  index: number;
+  start: number;
+  end: number;
+  root: html.Node;
+  nodes: html.Node[];
+  styles: html.Node[];
+  scriptNodes: html.Node[];
+  scripts: ScriptBlock[];
 }
