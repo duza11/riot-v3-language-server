@@ -8,6 +8,30 @@ import type { TypeScriptExtraServiceScript } from '@volar/typescript';
 import type * as ts from 'typescript';
 import * as html from 'vscode-html-languageservice';
 import type { URI } from 'vscode-uri';
+import {
+  findPreviousNonWhitespace,
+  isIdentifierPart,
+  isIdentifierStart,
+  isInRanges,
+  scanBalanced,
+  scanComment,
+  scanIdentifierEnd,
+  scanString,
+  scanTemplateNonIdentifier,
+} from './core/scanners';
+import type {
+  GeneratedSegment,
+  RiotV3ReferenceRange,
+  RiotV3RenameRange,
+  RiotV3RenameTextEdit,
+  TextRange,
+} from './core/types';
+
+export type {
+  RiotV3ReferenceRange,
+  RiotV3RenameRange,
+  RiotV3RenameTextEdit,
+} from './core/types';
 
 const scriptKind = {
   JS: 1,
@@ -227,22 +251,6 @@ interface ScriptProperty {
   name: string;
   sourceOffset: number;
   typeName: string;
-}
-
-export interface RiotV3RenameTextEdit {
-  start: number;
-  end: number;
-  newText: string;
-}
-
-export interface RiotV3ReferenceRange {
-  start: number;
-  end: number;
-}
-
-export interface RiotV3RenameRange {
-  start: number;
-  end: number;
 }
 
 interface ComponentTypeData {
@@ -1552,11 +1560,6 @@ interface ScriptBlock {
     | 'typescriptreact';
 }
 
-interface TextRange {
-  start: number;
-  end: number;
-}
-
 function getRiotV3Components(
   documentLength: number,
   htmlDocument: html.HTMLDocument,
@@ -2069,14 +2072,6 @@ function scanRiotV3MethodDefinition(
   };
 }
 
-function scanIdentifierEnd(text: string, start: number): number {
-  let offset = start + 1;
-  while (offset < text.length && isIdentifierPart(text[offset])) {
-    offset++;
-  }
-  return offset;
-}
-
 function scanFunctionLikeEnd(text: string, start: number): number | undefined {
   if (
     !text.startsWith('function', start) ||
@@ -2119,38 +2114,6 @@ function scanFunctionLikeEnd(text: string, start: number): number | undefined {
   return scanBalanced(text, cursor, '{', '}');
 }
 
-function scanBalanced(
-  text: string,
-  start: number,
-  open: string,
-  close: string,
-): number | undefined {
-  let depth = 0;
-  for (let offset = start; offset < text.length; ) {
-    const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
-      continue;
-    }
-    if (char === open) {
-      depth++;
-    } else if (char === close) {
-      depth--;
-      if (depth === 0) {
-        return offset + 1;
-      }
-    }
-    offset++;
-  }
-}
-
 type TemplateExpressionKind = 'expression';
 
 interface TemplateExpression {
@@ -2160,14 +2123,6 @@ interface TemplateExpression {
   localNames: string[];
   localDefinitions: EachLocalName[];
   eachDepth: number | undefined;
-}
-
-interface GeneratedSegment {
-  text: string;
-  sourceOffset?: number;
-  length?: number;
-  generatedLength?: number;
-  data?: CodeMapping['data'];
 }
 
 interface EachScope {
@@ -3263,40 +3218,6 @@ function findTemplateExpressionEnd(
   }
 }
 
-function scanTemplateNonIdentifier(text: string, start: number): number {
-  const char = text[start];
-  if (char === "'" || char === '"' || char === '`') {
-    return scanString(text, start);
-  }
-  if (char === '/' && (text[start + 1] === '/' || text[start + 1] === '*')) {
-    return scanComment(text, start);
-  }
-  return start + 1;
-}
-
-function scanString(text: string, start: number): number {
-  const quote = text[start];
-  for (let offset = start + 1; offset < text.length; offset++) {
-    if (text[offset] === '\\') {
-      offset++;
-      continue;
-    }
-    if (text[offset] === quote) {
-      return offset + 1;
-    }
-  }
-  return text.length;
-}
-
-function scanComment(text: string, start: number): number {
-  if (text[start + 1] === '/') {
-    const end = text.indexOf('\n', start + 2);
-    return end === -1 ? text.length : end;
-  }
-  const end = text.indexOf('*/', start + 2);
-  return end === -1 ? text.length : end + 2;
-}
-
 function getAttributeNameBeforeExpression(
   text: string,
   offset: number,
@@ -3318,32 +3239,6 @@ function getAttributeNameBeforeExpression(
   }
   if (cursor + 1 < end) {
     return text.slice(cursor + 1, end).toLowerCase();
-  }
-}
-
-function isInRanges(
-  offset: number,
-  ranges: { start: number; end: number }[],
-): boolean {
-  return ranges.some((range) => offset >= range.start && offset < range.end);
-}
-
-function isIdentifierStart(char: string): boolean {
-  return /[$A-Z_a-z]/.test(char);
-}
-
-function isIdentifierPart(char: string): boolean {
-  return /[$\w]/.test(char);
-}
-
-function findPreviousNonWhitespace(
-  text: string,
-  offset: number,
-): string | undefined {
-  for (let cursor = offset; cursor >= 0; cursor--) {
-    if (!/\s/.test(text[cursor])) {
-      return text[cursor];
-    }
   }
 }
 
