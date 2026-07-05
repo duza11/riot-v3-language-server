@@ -45,30 +45,12 @@ export function getRiotV3RenameEdits(
   position: number,
   newName: string,
 ): RiotV3RenameTextEdit[] {
-  const identifier = getIdentifierAtOffset(sourceText, position);
-  if (!identifier) {
+  const context = getNavigationContext(sourceText, position);
+  if (!context) {
     return [];
   }
+  const { identifier, snapshot, component, templateAnalysis } = context;
 
-  const snapshot = createScriptSnapshot(sourceText);
-  const htmlDocument = htmlLs.parseHTMLDocument(
-    html.TextDocument.create('', 'html', 0, sourceText),
-  );
-  const components = getRiotV3Components(sourceText.length, htmlDocument);
-  const component = getComponentAtOffset(components, position);
-  if (!component) {
-    return [];
-  }
-
-  const templateAnalysis = createTemplateAnalysis(
-    snapshot,
-    component.nodes,
-    getTemplateIgnoredRanges(component),
-    {
-      start: component.start,
-      end: component.end,
-    },
-  );
   const eachLocal = getEachLocalRenameTarget(
     identifier,
     templateAnalysis.expressions,
@@ -115,30 +97,12 @@ export function getRiotV3ReferenceRanges(
   sourceText: string,
   position: number,
 ): RiotV3ReferenceRange[] {
-  const identifier = getIdentifierAtOffset(sourceText, position);
-  if (!identifier) {
+  const context = getNavigationContext(sourceText, position);
+  if (!context) {
     return [];
   }
+  const { identifier, snapshot, component, templateAnalysis } = context;
 
-  const snapshot = createScriptSnapshot(sourceText);
-  const htmlDocument = htmlLs.parseHTMLDocument(
-    html.TextDocument.create('', 'html', 0, sourceText),
-  );
-  const components = getRiotV3Components(sourceText.length, htmlDocument);
-  const component = getComponentAtOffset(components, position);
-  if (!component) {
-    return [];
-  }
-
-  const templateAnalysis = createTemplateAnalysis(
-    snapshot,
-    component.nodes,
-    getTemplateIgnoredRanges(component),
-    {
-      start: component.start,
-      end: component.end,
-    },
-  );
   const eachLocal = getEachLocalRenameTarget(
     identifier,
     templateAnalysis.expressions,
@@ -182,30 +146,12 @@ export function getRiotV3RenameRange(
   sourceText: string,
   position: number,
 ): RiotV3RenameRange | undefined {
-  const identifier = getIdentifierAtOffset(sourceText, position);
-  if (!identifier) {
+  const context = getNavigationContext(sourceText, position);
+  if (!context) {
     return;
   }
+  const { identifier, snapshot, component, templateAnalysis } = context;
 
-  const snapshot = createScriptSnapshot(sourceText);
-  const htmlDocument = htmlLs.parseHTMLDocument(
-    html.TextDocument.create('', 'html', 0, sourceText),
-  );
-  const components = getRiotV3Components(sourceText.length, htmlDocument);
-  const component = getComponentAtOffset(components, position);
-  if (!component) {
-    return;
-  }
-
-  const templateAnalysis = createTemplateAnalysis(
-    snapshot,
-    component.nodes,
-    getTemplateIgnoredRanges(component),
-    {
-      start: component.start,
-      end: component.end,
-    },
-  );
   if (
     getEachLocalRenameTarget(
       identifier,
@@ -235,6 +181,48 @@ export function getRiotV3RenameRange(
       end: identifier.end,
     };
   }
+}
+
+interface NavigationContext {
+  identifier: IdentifierRange;
+  snapshot: ts.IScriptSnapshot;
+  component: RiotV3Component;
+  templateAnalysis: TemplateAnalysis;
+}
+
+function getNavigationContext(
+  sourceText: string,
+  position: number,
+): NavigationContext | undefined {
+  const identifier = getIdentifierAtOffset(sourceText, position);
+  if (!identifier) {
+    return;
+  }
+
+  const snapshot = createScriptSnapshot(sourceText);
+  const htmlDocument = htmlLs.parseHTMLDocument(
+    html.TextDocument.create('', 'html', 0, sourceText),
+  );
+  const components = getRiotV3Components(sourceText.length, htmlDocument);
+  const component = getComponentAtOffset(components, position);
+  if (!component) {
+    return;
+  }
+
+  return {
+    identifier,
+    snapshot,
+    component,
+    templateAnalysis: createTemplateAnalysis(
+      snapshot,
+      component.nodes,
+      getTemplateIgnoredRanges(component),
+      {
+        start: component.start,
+        end: component.end,
+      },
+    ),
+  };
 }
 
 function getComponentAtOffset(
