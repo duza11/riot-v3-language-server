@@ -1,4 +1,3 @@
-import type { VirtualCode } from '@volar/language-core';
 import type { GeneratedSegment, ScriptProperty } from './types';
 
 const riotV3GlobalTypes = `
@@ -73,14 +72,19 @@ declare const riot: RiotV3Static;
 declare const opts: RiotV3TagInstance['opts'];
 `;
 
-interface ComponentTypeData {
+export interface RiotV3GlobalTypesComponentData {
   scriptProperties: ScriptProperty[];
   eachDepthCount: number;
 }
 
-export function createRiotV3GlobalTypes(
-  components: ComponentTypeData[],
-): VirtualCode {
+export interface GeneratedRiotV3GlobalTypes {
+  text: string;
+  segments: GeneratedSegment[];
+}
+
+export function generateRiotV3GlobalTypes(
+  components: RiotV3GlobalTypesComponentData[],
+): GeneratedRiotV3GlobalTypes {
   const dynamicTypeSegments: GeneratedSegment[] = [];
   for (let index = 0; index < components.length; index++) {
     const { scriptProperties, eachDepthCount } = components[index];
@@ -116,46 +120,9 @@ export function createRiotV3GlobalTypes(
     }
   }
 
-  let generatedText = riotV3GlobalTypes;
-  const sourceOffsets: number[] = [];
-  const generatedOffsets: number[] = [];
-  const lengths: number[] = [];
-  for (const segment of dynamicTypeSegments) {
-    const generatedOffset = generatedText.length;
-    generatedText += segment.text;
-    if (segment.sourceOffset !== undefined && segment.length !== undefined) {
-      sourceOffsets.push(segment.sourceOffset);
-      generatedOffsets.push(generatedOffset);
-      lengths.push(segment.length);
-    }
-  }
-
   return {
-    id: 'riot_v3_globals',
-    languageId: 'typescript',
-    snapshot: {
-      getText: (start, end) => generatedText.substring(start, end),
-      getLength: () => generatedText.length,
-      getChangeRange: () => undefined,
-    },
-    mappings: sourceOffsets.length
-      ? [
-          {
-            sourceOffsets,
-            generatedOffsets,
-            lengths,
-            data: {
-              completion: true,
-              format: false,
-              navigation: true,
-              semantic: true,
-              structure: true,
-              verification: true,
-            },
-          },
-        ]
-      : [],
-    embeddedCodes: [],
+    text: riotV3GlobalTypes,
+    segments: dynamicTypeSegments,
   };
 }
 

@@ -6,7 +6,11 @@ import {
   getStyleLanguageId,
   getTemplateIgnoredRanges,
 } from './components';
-import { createRiotV3GlobalTypes, getComponentTypeNames } from './globalTypes';
+import {
+  generateRiotV3GlobalTypes,
+  getComponentTypeNames,
+  type RiotV3GlobalTypesComponentData,
+} from './globalTypes';
 import {
   generateScriptVirtualText,
   getComponentScriptLanguageId,
@@ -75,7 +79,7 @@ export class RiotV3VirtualCode implements VirtualCode {
     }));
     this.embeddedCodes = [
       ...getRiotV3EmbeddedCodes(snapshot, componentAnalyses),
-      createRiotV3GlobalTypes(
+      createRiotV3GlobalTypesVirtualCode(
         componentAnalyses.map(({ component, templateAnalysis }) => ({
           scriptProperties: getScriptProperties(snapshot, component.scripts),
           eachDepthCount: templateAnalysis.eachDepthCount,
@@ -83,6 +87,53 @@ export class RiotV3VirtualCode implements VirtualCode {
       ),
     ];
   }
+}
+
+function createRiotV3GlobalTypesVirtualCode(
+  components: RiotV3GlobalTypesComponentData[],
+): VirtualCode {
+  const generated = generateRiotV3GlobalTypes(components);
+  let generatedText = generated.text;
+  const sourceOffsets: number[] = [];
+  const generatedOffsets: number[] = [];
+  const lengths: number[] = [];
+  for (const segment of generated.segments) {
+    const generatedOffset = generatedText.length;
+    generatedText += segment.text;
+    if (segment.sourceOffset !== undefined && segment.length !== undefined) {
+      sourceOffsets.push(segment.sourceOffset);
+      generatedOffsets.push(generatedOffset);
+      lengths.push(segment.length);
+    }
+  }
+
+  return {
+    id: 'riot_v3_globals',
+    languageId: 'typescript',
+    snapshot: {
+      getText: (start, end) => generatedText.substring(start, end),
+      getLength: () => generatedText.length,
+      getChangeRange: () => undefined,
+    },
+    mappings: sourceOffsets.length
+      ? [
+          {
+            sourceOffsets,
+            generatedOffsets,
+            lengths,
+            data: {
+              completion: true,
+              format: false,
+              navigation: true,
+              semantic: true,
+              structure: true,
+              verification: true,
+            },
+          },
+        ]
+      : [],
+    embeddedCodes: [],
+  };
 }
 
 function* getRiotV3EmbeddedCodes(
