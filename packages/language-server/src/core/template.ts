@@ -81,22 +81,6 @@ export function createTemplateAnalysis(
   };
 }
 
-export function getTemplateExpressions(
-  snapshot: ts.IScriptSnapshot,
-  htmlNodes: html.Node[],
-  ignoredRanges: TextRange[],
-  range: { start: number; end: number },
-): TemplateExpression[] {
-  const sourceText = snapshot.getText(0, snapshot.getLength());
-  const eachScopes = getEachScopes(sourceText, htmlNodes);
-  return getTemplateExpressionsForSource(
-    sourceText,
-    eachScopes,
-    ignoredRanges,
-    range,
-  );
-}
-
 function getTemplateExpressionsForSource(
   sourceText: string,
   eachScopes: EachScope[],
@@ -195,7 +179,7 @@ function getTemplateExpressionsForSource(
   return expressions;
 }
 
-export function getEachScopes(
+function getEachScopes(
   sourceText: string,
   htmlNodes: html.Node[],
 ): EachScope[] {
@@ -237,14 +221,6 @@ export function getEachScopes(
     });
   }
   return scopes;
-}
-
-export function getEachDepthCount(
-  snapshot: ts.IScriptSnapshot,
-  htmlNodes: html.Node[],
-): number {
-  const sourceText = snapshot.getText(0, snapshot.getLength());
-  return getEachDepthCountForScopes(getEachScopes(sourceText, htmlNodes));
 }
 
 function getEachDepthCountForScopes(scopes: EachScope[]): number {
