@@ -233,6 +233,29 @@ const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collec
 void (group.name);`);
   });
 
+  it('keeps nested each locals invisible to outer expressions', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <ul>
+    <li each={ group in groups }>
+      <span>{ item }</span>
+      <em each={ item in group.items }>{ item.name }</em>
+    </li>
+  </ul>
+</demo-widget>
+`);
+
+    const template = getTemplateText(code);
+
+    expect(template).toContain('void (this.item);');
+    expect(template).toContain('void (item.name);');
+    expect(
+      template,
+    ).not.toContain(`const __riot_v3_each_collection_1 = group.items;
+const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_1>;
+void (this.item);`);
+  });
+
   it('supports Riot v3 each collection shorthand', () => {
     const code = createVirtualCode(`
 <demo-widget>
