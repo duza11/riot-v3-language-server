@@ -14,12 +14,12 @@ import {
   scanRiotV3MethodProperties,
 } from './script';
 import {
+  createTemplateAnalysis,
   type EachLocalName,
   type EachScope,
-  getEachScopes,
   getResolvedEachLocalName,
-  getTemplateExpressions,
   shouldPrefixTemplateIdentifier,
+  type TemplateAnalysis,
   type TemplateExpression,
 } from './template';
 import type {
@@ -45,38 +45,22 @@ export function getRiotV3RenameEdits(
   position: number,
   newName: string,
 ): RiotV3RenameTextEdit[] {
-  const identifier = getIdentifierAtOffset(sourceText, position);
-  if (!identifier) {
+  const context = getNavigationContext(sourceText, position);
+  if (!context) {
     return [];
   }
+  const { identifier, snapshot, component, templateAnalysis } = context;
 
-  const snapshot = createScriptSnapshot(sourceText);
-  const htmlDocument = htmlLs.parseHTMLDocument(
-    html.TextDocument.create('', 'html', 0, sourceText),
-  );
-  const components = getRiotV3Components(sourceText.length, htmlDocument);
-  const component = getComponentAtOffset(components, position);
-  if (!component) {
-    return [];
-  }
-
-  const expressions = getTemplateExpressions(
-    snapshot,
-    component.nodes,
-    getTemplateIgnoredRanges(component),
-    {
-      start: component.start,
-      end: component.end,
-    },
-  );
-  const eachScopes = getEachScopes(sourceText, component.nodes);
   const eachLocal = getEachLocalRenameTarget(
     identifier,
-    expressions,
-    eachScopes,
+    templateAnalysis.expressions,
+    templateAnalysis.eachScopes,
   );
   if (eachLocal) {
-    return getEachLocalRenameOffsets(eachLocal, expressions).map((offset) => ({
+    return getEachLocalRenameOffsets(
+      eachLocal,
+      templateAnalysis.expressions,
+    ).map((offset) => ({
       start: offset,
       end: offset + eachLocal.name.length,
       newText: newName,
@@ -91,6 +75,7 @@ export function getRiotV3RenameEdits(
       scriptProperties,
       snapshot,
       component,
+      templateAnalysis,
     )
   ) {
     return [];
@@ -99,7 +84,7 @@ export function getRiotV3RenameEdits(
   return getRiotPropertyReferenceOffsets(
     snapshot,
     component,
-    expressions,
+    templateAnalysis.expressions,
     identifier.name,
   ).map((offset) => ({
     start: offset,
@@ -112,38 +97,22 @@ export function getRiotV3ReferenceRanges(
   sourceText: string,
   position: number,
 ): RiotV3ReferenceRange[] {
-  const identifier = getIdentifierAtOffset(sourceText, position);
-  if (!identifier) {
+  const context = getNavigationContext(sourceText, position);
+  if (!context) {
     return [];
   }
+  const { identifier, snapshot, component, templateAnalysis } = context;
 
-  const snapshot = createScriptSnapshot(sourceText);
-  const htmlDocument = htmlLs.parseHTMLDocument(
-    html.TextDocument.create('', 'html', 0, sourceText),
-  );
-  const components = getRiotV3Components(sourceText.length, htmlDocument);
-  const component = getComponentAtOffset(components, position);
-  if (!component) {
-    return [];
-  }
-
-  const expressions = getTemplateExpressions(
-    snapshot,
-    component.nodes,
-    getTemplateIgnoredRanges(component),
-    {
-      start: component.start,
-      end: component.end,
-    },
-  );
-  const eachScopes = getEachScopes(sourceText, component.nodes);
   const eachLocal = getEachLocalRenameTarget(
     identifier,
-    expressions,
-    eachScopes,
+    templateAnalysis.expressions,
+    templateAnalysis.eachScopes,
   );
   if (eachLocal) {
-    return getEachLocalRenameOffsets(eachLocal, expressions).map((offset) => ({
+    return getEachLocalRenameOffsets(
+      eachLocal,
+      templateAnalysis.expressions,
+    ).map((offset) => ({
       start: offset,
       end: offset + eachLocal.name.length,
     }));
@@ -157,6 +126,7 @@ export function getRiotV3ReferenceRanges(
       scriptProperties,
       snapshot,
       component,
+      templateAnalysis,
     )
   ) {
     return [];
@@ -164,7 +134,7 @@ export function getRiotV3ReferenceRanges(
   return getRiotPropertyReferenceOffsets(
     snapshot,
     component,
-    expressions,
+    templateAnalysis.expressions,
     identifier.name,
   ).map((offset) => ({
     start: offset,
@@ -176,32 +146,19 @@ export function getRiotV3RenameRange(
   sourceText: string,
   position: number,
 ): RiotV3RenameRange | undefined {
-  const identifier = getIdentifierAtOffset(sourceText, position);
-  if (!identifier) {
+  const context = getNavigationContext(sourceText, position);
+  if (!context) {
     return;
   }
+  const { identifier, snapshot, component, templateAnalysis } = context;
 
-  const snapshot = createScriptSnapshot(sourceText);
-  const htmlDocument = htmlLs.parseHTMLDocument(
-    html.TextDocument.create('', 'html', 0, sourceText),
-  );
-  const components = getRiotV3Components(sourceText.length, htmlDocument);
-  const component = getComponentAtOffset(components, position);
-  if (!component) {
-    return;
-  }
-
-  const expressions = getTemplateExpressions(
-    snapshot,
-    component.nodes,
-    getTemplateIgnoredRanges(component),
-    {
-      start: component.start,
-      end: component.end,
-    },
-  );
-  const eachScopes = getEachScopes(sourceText, component.nodes);
-  if (getEachLocalRenameTarget(identifier, expressions, eachScopes)) {
+  if (
+    getEachLocalRenameTarget(
+      identifier,
+      templateAnalysis.expressions,
+      templateAnalysis.eachScopes,
+    )
+  ) {
     return {
       start: identifier.start,
       end: identifier.end,
@@ -216,6 +173,7 @@ export function getRiotV3RenameRange(
       scriptProperties,
       snapshot,
       component,
+      templateAnalysis,
     )
   ) {
     return {
@@ -223,6 +181,48 @@ export function getRiotV3RenameRange(
       end: identifier.end,
     };
   }
+}
+
+interface NavigationContext {
+  identifier: IdentifierRange;
+  snapshot: ts.IScriptSnapshot;
+  component: RiotV3Component;
+  templateAnalysis: TemplateAnalysis;
+}
+
+function getNavigationContext(
+  sourceText: string,
+  position: number,
+): NavigationContext | undefined {
+  const identifier = getIdentifierAtOffset(sourceText, position);
+  if (!identifier) {
+    return;
+  }
+
+  const snapshot = createScriptSnapshot(sourceText);
+  const htmlDocument = htmlLs.parseHTMLDocument(
+    html.TextDocument.create('', 'html', 0, sourceText),
+  );
+  const components = getRiotV3Components(sourceText.length, htmlDocument);
+  const component = getComponentAtOffset(components, position);
+  if (!component) {
+    return;
+  }
+
+  return {
+    identifier,
+    snapshot,
+    component,
+    templateAnalysis: createTemplateAnalysis(
+      snapshot,
+      component.nodes,
+      getTemplateIgnoredRanges(component),
+      {
+        start: component.start,
+        end: component.end,
+      },
+    ),
+  };
 }
 
 function getComponentAtOffset(
@@ -240,6 +240,7 @@ function isRiotPropertyRenameSource(
   scriptProperties: ScriptProperty[],
   snapshot: ts.IScriptSnapshot,
   component: RiotV3Component,
+  templateAnalysis: TemplateAnalysis,
 ): boolean {
   if (!scriptProperties.some((property) => property.name === identifier.name)) {
     return false;
@@ -264,16 +265,7 @@ function isRiotPropertyRenameSource(
   ) {
     return true;
   }
-  const expressions = getTemplateExpressions(
-    snapshot,
-    component.nodes,
-    getTemplateIgnoredRanges(component),
-    {
-      start: component.start,
-      end: component.end,
-    },
-  );
-  return expressions.some(
+  return templateAnalysis.expressions.some(
     (expression) =>
       identifier.start >= expression.sourceOffset &&
       identifier.end <= expression.sourceOffset + expression.text.length &&

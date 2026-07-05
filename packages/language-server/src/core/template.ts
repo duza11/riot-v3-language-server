@@ -44,6 +44,12 @@ export interface EachLocalName {
   collectionLocalNames: string[];
 }
 
+export interface TemplateAnalysis {
+  expressions: TemplateExpression[];
+  eachScopes: EachScope[];
+  eachDepthCount: number;
+}
+
 interface AttributeExpression {
   sourceOffset: number;
   text: string;
@@ -55,14 +61,32 @@ interface EachExpression {
   collectionText: string;
 }
 
-export function getTemplateExpressions(
+export function createTemplateAnalysis(
   snapshot: ts.IScriptSnapshot,
   htmlNodes: html.Node[],
   ignoredRanges: TextRange[],
   range: { start: number; end: number },
-): TemplateExpression[] {
+): TemplateAnalysis {
   const sourceText = snapshot.getText(0, snapshot.getLength());
   const eachScopes = getEachScopes(sourceText, htmlNodes);
+  return {
+    expressions: getTemplateExpressionsForSource(
+      sourceText,
+      eachScopes,
+      ignoredRanges,
+      range,
+    ),
+    eachScopes,
+    eachDepthCount: getEachDepthCountForScopes(eachScopes),
+  };
+}
+
+function getTemplateExpressionsForSource(
+  sourceText: string,
+  eachScopes: EachScope[],
+  ignoredRanges: TextRange[],
+  range: { start: number; end: number },
+): TemplateExpression[] {
   const expressions: TemplateExpression[] = [];
 
   for (let offset = range.start; offset < range.end; offset++) {
@@ -155,7 +179,7 @@ export function getTemplateExpressions(
   return expressions;
 }
 
-export function getEachScopes(
+function getEachScopes(
   sourceText: string,
   htmlNodes: html.Node[],
 ): EachScope[] {
@@ -199,12 +223,7 @@ export function getEachScopes(
   return scopes;
 }
 
-export function getEachDepthCount(
-  snapshot: ts.IScriptSnapshot,
-  htmlNodes: html.Node[],
-): number {
-  const sourceText = snapshot.getText(0, snapshot.getLength());
-  const scopes = getEachScopes(sourceText, htmlNodes);
+function getEachDepthCountForScopes(scopes: EachScope[]): number {
   return scopes.reduce(
     (maxDepth, scope) => Math.max(maxDepth, scope.depth + 1),
     0,

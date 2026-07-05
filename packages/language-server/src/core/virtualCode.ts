@@ -13,9 +13,9 @@ import {
   getScriptProperties,
 } from './script';
 import {
+  createTemplateAnalysis,
   createTemplateVirtualCode,
-  getEachDepthCount,
-  getTemplateExpressions,
+  type TemplateAnalysis,
 } from './template';
 import type { RiotV3Component } from './types';
 
@@ -61,12 +61,24 @@ export class RiotV3VirtualCode implements VirtualCode {
     );
     this.styleNodes = components.flatMap((component) => component.styles);
     this.scriptNodes = components.flatMap((component) => component.scriptNodes);
+    const componentAnalyses = components.map((component) => ({
+      component,
+      templateAnalysis: createTemplateAnalysis(
+        snapshot,
+        component.nodes,
+        getTemplateIgnoredRanges(component),
+        {
+          start: component.start,
+          end: component.end,
+        },
+      ),
+    }));
     this.embeddedCodes = [
-      ...getRiotV3EmbeddedCodes(snapshot, components),
+      ...getRiotV3EmbeddedCodes(snapshot, componentAnalyses),
       createRiotV3GlobalTypes(
-        components.map((component) => ({
+        componentAnalyses.map(({ component, templateAnalysis }) => ({
           scriptProperties: getScriptProperties(snapshot, component.scripts),
-          eachDepthCount: getEachDepthCount(snapshot, component.nodes),
+          eachDepthCount: templateAnalysis.eachDepthCount,
         })),
       ),
     ];
@@ -75,21 +87,15 @@ export class RiotV3VirtualCode implements VirtualCode {
 
 function* getRiotV3EmbeddedCodes(
   snapshot: ts.IScriptSnapshot,
-  components: RiotV3Component[],
+  componentAnalyses: {
+    component: RiotV3Component;
+    templateAnalysis: TemplateAnalysis;
+  }[],
 ): Generator<VirtualCode> {
   let styleIndex = 0;
   let scriptIndex = 0;
-  for (const component of components) {
+  for (const { component, templateAnalysis } of componentAnalyses) {
     const componentTypeNames = getComponentTypeNames(component.index);
-    const templateExpressions = getTemplateExpressions(
-      snapshot,
-      component.nodes,
-      getTemplateIgnoredRanges(component),
-      {
-        start: component.start,
-        end: component.end,
-      },
-    );
 
     for (const style of component.styles) {
       if (style.startTagEnd !== undefined && style.endTagStart !== undefined) {
@@ -149,10 +155,12 @@ function* getRiotV3EmbeddedCodes(
       };
     }
 
-    if (templateExpressions.length) {
+    if (templateAnalysis.expressions.length) {
       yield createTemplateVirtualCode(
-        components.length === 1 ? 'template' : 'template_' + component.index,
-        templateExpressions,
+        componentAnalyses.length === 1
+          ? 'template'
+          : 'template_' + component.index,
+        templateAnalysis.expressions,
         componentTypeNames,
       );
     }
