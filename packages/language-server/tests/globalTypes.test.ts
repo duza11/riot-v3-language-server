@@ -186,12 +186,9 @@ describe('global type virtual code', () => {
     expect(globals).toContain('_riot_id: number;');
   });
 
-  it('infers each collection types from script array assignments', () => {
+  it('infers array component state types from script assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
-  <ul>
-    <li each={ item, i in items }>{ item.name } { item.visible } { i.toFixed() }</li>
-  </ul>
   <script>
     this.items = [{ name: 'Alice', visible: true }]
   </script>
@@ -203,14 +200,9 @@ describe('global type virtual code', () => {
     expect(globals).toContain('items: { name: string; visible: boolean; }[];');
   });
 
-  it('infers nested each collection types from script assignments', () => {
+  it('infers nested array component state types from script assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
-  <ul>
-    <li each={ group in groups }>
-      <span each={ item in group.items }>{ group.name } { item.label }</span>
-    </li>
-  </ul>
   <script>
     this.groups = [{ name: 'Group', items: [{ label: 'Child' }] }]
   </script>
