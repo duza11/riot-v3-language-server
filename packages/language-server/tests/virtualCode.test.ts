@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createVirtualCode,
+  getEmbeddedCode,
   getEmbeddedText,
   getScriptText,
   getTemplateText,
@@ -85,5 +86,27 @@ describe('RiotV3VirtualCode embedded codes', () => {
     const style = getEmbeddedText(code, 'style_0');
 
     expect(style).toContain('p { color: red; }');
+  });
+
+  it('keeps global type property mappings out of semantic features', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ message }</p>
+  <script>
+    this.message = 'hello'
+  </script>
+</demo-widget>
+`);
+
+    const globals = getEmbeddedCode(code, 'riot_v3_globals');
+
+    expect(globals.mappings).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          navigation: true,
+          semantic: false,
+        }),
+      }),
+    ]);
   });
 });

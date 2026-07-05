@@ -125,7 +125,7 @@ function createRiotV3GlobalTypesVirtualCode(
               completion: true,
               format: false,
               navigation: true,
-              semantic: true,
+              semantic: false,
               structure: true,
               verification: true,
             },
