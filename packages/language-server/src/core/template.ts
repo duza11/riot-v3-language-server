@@ -44,6 +44,12 @@ export interface EachLocalName {
   collectionLocalNames: string[];
 }
 
+export interface TemplateAnalysis {
+  expressions: TemplateExpression[];
+  eachScopes: EachScope[];
+  eachDepthCount: number;
+}
+
 interface AttributeExpression {
   sourceOffset: number;
   text: string;
@@ -55,6 +61,26 @@ interface EachExpression {
   collectionText: string;
 }
 
+export function createTemplateAnalysis(
+  snapshot: ts.IScriptSnapshot,
+  htmlNodes: html.Node[],
+  ignoredRanges: TextRange[],
+  range: { start: number; end: number },
+): TemplateAnalysis {
+  const sourceText = snapshot.getText(0, snapshot.getLength());
+  const eachScopes = getEachScopes(sourceText, htmlNodes);
+  return {
+    expressions: getTemplateExpressionsForSource(
+      sourceText,
+      eachScopes,
+      ignoredRanges,
+      range,
+    ),
+    eachScopes,
+    eachDepthCount: getEachDepthCountForScopes(eachScopes),
+  };
+}
+
 export function getTemplateExpressions(
   snapshot: ts.IScriptSnapshot,
   htmlNodes: html.Node[],
@@ -63,6 +89,20 @@ export function getTemplateExpressions(
 ): TemplateExpression[] {
   const sourceText = snapshot.getText(0, snapshot.getLength());
   const eachScopes = getEachScopes(sourceText, htmlNodes);
+  return getTemplateExpressionsForSource(
+    sourceText,
+    eachScopes,
+    ignoredRanges,
+    range,
+  );
+}
+
+function getTemplateExpressionsForSource(
+  sourceText: string,
+  eachScopes: EachScope[],
+  ignoredRanges: TextRange[],
+  range: { start: number; end: number },
+): TemplateExpression[] {
   const expressions: TemplateExpression[] = [];
 
   for (let offset = range.start; offset < range.end; offset++) {
@@ -204,7 +244,10 @@ export function getEachDepthCount(
   htmlNodes: html.Node[],
 ): number {
   const sourceText = snapshot.getText(0, snapshot.getLength());
-  const scopes = getEachScopes(sourceText, htmlNodes);
+  return getEachDepthCountForScopes(getEachScopes(sourceText, htmlNodes));
+}
+
+function getEachDepthCountForScopes(scopes: EachScope[]): number {
   return scopes.reduce(
     (maxDepth, scope) => Math.max(maxDepth, scope.depth + 1),
     0,

@@ -14,12 +14,12 @@ import {
   scanRiotV3MethodProperties,
 } from './script';
 import {
+  createTemplateAnalysis,
   type EachLocalName,
   type EachScope,
-  getEachScopes,
   getResolvedEachLocalName,
-  getTemplateExpressions,
   shouldPrefixTemplateIdentifier,
+  type TemplateAnalysis,
   type TemplateExpression,
 } from './template';
 import type {
@@ -60,7 +60,7 @@ export function getRiotV3RenameEdits(
     return [];
   }
 
-  const expressions = getTemplateExpressions(
+  const templateAnalysis = createTemplateAnalysis(
     snapshot,
     component.nodes,
     getTemplateIgnoredRanges(component),
@@ -69,14 +69,16 @@ export function getRiotV3RenameEdits(
       end: component.end,
     },
   );
-  const eachScopes = getEachScopes(sourceText, component.nodes);
   const eachLocal = getEachLocalRenameTarget(
     identifier,
-    expressions,
-    eachScopes,
+    templateAnalysis.expressions,
+    templateAnalysis.eachScopes,
   );
   if (eachLocal) {
-    return getEachLocalRenameOffsets(eachLocal, expressions).map((offset) => ({
+    return getEachLocalRenameOffsets(
+      eachLocal,
+      templateAnalysis.expressions,
+    ).map((offset) => ({
       start: offset,
       end: offset + eachLocal.name.length,
       newText: newName,
@@ -91,6 +93,7 @@ export function getRiotV3RenameEdits(
       scriptProperties,
       snapshot,
       component,
+      templateAnalysis,
     )
   ) {
     return [];
@@ -99,7 +102,7 @@ export function getRiotV3RenameEdits(
   return getRiotPropertyReferenceOffsets(
     snapshot,
     component,
-    expressions,
+    templateAnalysis.expressions,
     identifier.name,
   ).map((offset) => ({
     start: offset,
@@ -127,7 +130,7 @@ export function getRiotV3ReferenceRanges(
     return [];
   }
 
-  const expressions = getTemplateExpressions(
+  const templateAnalysis = createTemplateAnalysis(
     snapshot,
     component.nodes,
     getTemplateIgnoredRanges(component),
@@ -136,14 +139,16 @@ export function getRiotV3ReferenceRanges(
       end: component.end,
     },
   );
-  const eachScopes = getEachScopes(sourceText, component.nodes);
   const eachLocal = getEachLocalRenameTarget(
     identifier,
-    expressions,
-    eachScopes,
+    templateAnalysis.expressions,
+    templateAnalysis.eachScopes,
   );
   if (eachLocal) {
-    return getEachLocalRenameOffsets(eachLocal, expressions).map((offset) => ({
+    return getEachLocalRenameOffsets(
+      eachLocal,
+      templateAnalysis.expressions,
+    ).map((offset) => ({
       start: offset,
       end: offset + eachLocal.name.length,
     }));
@@ -157,6 +162,7 @@ export function getRiotV3ReferenceRanges(
       scriptProperties,
       snapshot,
       component,
+      templateAnalysis,
     )
   ) {
     return [];
@@ -164,7 +170,7 @@ export function getRiotV3ReferenceRanges(
   return getRiotPropertyReferenceOffsets(
     snapshot,
     component,
-    expressions,
+    templateAnalysis.expressions,
     identifier.name,
   ).map((offset) => ({
     start: offset,
@@ -191,7 +197,7 @@ export function getRiotV3RenameRange(
     return;
   }
 
-  const expressions = getTemplateExpressions(
+  const templateAnalysis = createTemplateAnalysis(
     snapshot,
     component.nodes,
     getTemplateIgnoredRanges(component),
@@ -200,8 +206,13 @@ export function getRiotV3RenameRange(
       end: component.end,
     },
   );
-  const eachScopes = getEachScopes(sourceText, component.nodes);
-  if (getEachLocalRenameTarget(identifier, expressions, eachScopes)) {
+  if (
+    getEachLocalRenameTarget(
+      identifier,
+      templateAnalysis.expressions,
+      templateAnalysis.eachScopes,
+    )
+  ) {
     return {
       start: identifier.start,
       end: identifier.end,
@@ -216,6 +227,7 @@ export function getRiotV3RenameRange(
       scriptProperties,
       snapshot,
       component,
+      templateAnalysis,
     )
   ) {
     return {
@@ -240,6 +252,7 @@ function isRiotPropertyRenameSource(
   scriptProperties: ScriptProperty[],
   snapshot: ts.IScriptSnapshot,
   component: RiotV3Component,
+  templateAnalysis: TemplateAnalysis,
 ): boolean {
   if (!scriptProperties.some((property) => property.name === identifier.name)) {
     return false;
@@ -264,16 +277,7 @@ function isRiotPropertyRenameSource(
   ) {
     return true;
   }
-  const expressions = getTemplateExpressions(
-    snapshot,
-    component.nodes,
-    getTemplateIgnoredRanges(component),
-    {
-      start: component.start,
-      end: component.end,
-    },
-  );
-  return expressions.some(
+  return templateAnalysis.expressions.some(
     (expression) =>
       identifier.start >= expression.sourceOffset &&
       identifier.end <= expression.sourceOffset + expression.text.length &&
