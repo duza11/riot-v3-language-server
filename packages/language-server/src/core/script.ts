@@ -22,6 +22,14 @@ const riotV3ScriptContextSuffix = `
 const riotV3ImportStatement =
   /^\s*import(?!\w|(\s)?\()(?:(?:\s|[^\s'"])*)['|"].*\n?/gm;
 
+interface ScriptPropertyAssignment {
+  path: string[];
+  sourceOffset: number;
+  typeName: string;
+}
+
+const dynamicStringIndexProperty = '[key: string]';
+
 export function getScriptProperties(
   snapshot: ts.IScriptSnapshot,
   scripts: ScriptBlock[],
@@ -35,12 +43,7 @@ export function getScriptProperties(
       ...scanRiotV3MethodProperties(text, script.start),
     ]) {
       const existing = properties.get(property.name);
-      if (
-        !existing ||
-        (existing.typeName === 'any' && property.typeName !== 'any')
-      ) {
-        properties.set(property.name, property);
-      }
+      properties.set(property.name, mergeScriptProperty(existing, property));
     }
   }
   return [...properties.values()];
@@ -68,15 +71,35 @@ export function scanInstanceProperties(
   sourceOffset: number,
   sharedAliases: string[] = [],
 ): ScriptProperty[] {
+  const properties = new Map<string, ScriptProperty>();
+  for (const assignment of scanInstancePropertyAssignments(
+    text,
+    sourceOffset,
+    sharedAliases,
+  )) {
+    const property = createScriptPropertyFromAssignment(assignment);
+    properties.set(
+      property.name,
+      mergeScriptProperty(properties.get(property.name), property),
+    );
+  }
+  return [...properties.values()];
+}
+
+function scanInstancePropertyAssignments(
+  text: string,
+  sourceOffset: number,
+  sharedAliases: string[] = [],
+): ScriptPropertyAssignment[] {
   const aliases = [...sharedAliases];
   for (const alias of getThisAliases(text)) {
     if (!aliases.includes(alias)) {
       aliases.push(alias);
     }
   }
-  const properties = scanThisProperties(text, sourceOffset);
+  const properties = scanThisPropertyAssignments(text, sourceOffset);
   for (const alias of aliases) {
-    properties.push(...scanAliasProperties(text, sourceOffset, alias));
+    properties.push(...scanAliasPropertyAssignments(text, sourceOffset, alias));
   }
   return properties;
 }
@@ -238,11 +261,11 @@ export function generateScriptVirtualText(
   };
 }
 
-function scanThisProperties(
+function scanThisPropertyAssignments(
   text: string,
   sourceOffset: number,
-): ScriptProperty[] {
-  const properties: ScriptProperty[] = [];
+): ScriptPropertyAssignment[] {
+  const properties: ScriptPropertyAssignment[] = [];
   for (let offset = 0; offset < text.length; ) {
     const char = text[offset];
     if (char === "'" || char === '"' || char === '`') {
@@ -261,10 +284,15 @@ function scanThisProperties(
       !isIdentifierPart(text[offset - 1] ?? '') &&
       !isIdentifierPart(text[offset + 4] ?? '')
     ) {
-      const property = scanThisProperty(text, offset, sourceOffset);
+      const property = scanOwnerPropertyAssignment(
+        text,
+        offset,
+        sourceOffset,
+        'this',
+      );
       if (property) {
         properties.push(property);
-        offset = property.sourceOffset - sourceOffset + property.name.length;
+        offset = property.sourceOffset - sourceOffset + property.path[0].length;
         continue;
       }
     }
@@ -273,12 +301,12 @@ function scanThisProperties(
   return properties;
 }
 
-function scanAliasProperties(
+function scanAliasPropertyAssignments(
   text: string,
   sourceOffset: number,
   alias: string,
-): ScriptProperty[] {
-  const properties: ScriptProperty[] = [];
+): ScriptPropertyAssignment[] {
+  const properties: ScriptPropertyAssignment[] = [];
   for (let offset = 0; offset < text.length; ) {
     const char = text[offset];
     if (char === "'" || char === '"' || char === '`') {
@@ -297,10 +325,15 @@ function scanAliasProperties(
       !isIdentifierPart(text[offset - 1] ?? '') &&
       !isIdentifierPart(text[offset + alias.length] ?? '')
     ) {
-      const property = scanAliasProperty(text, offset, sourceOffset, alias);
+      const property = scanOwnerPropertyAssignment(
+        text,
+        offset,
+        sourceOffset,
+        alias,
+      );
       if (property) {
         properties.push(property);
-        offset = property.sourceOffset - sourceOffset + property.name.length;
+        offset = property.sourceOffset - sourceOffset + property.path[0].length;
         continue;
       }
     }
@@ -309,39 +342,34 @@ function scanAliasProperties(
   return properties;
 }
 
-function scanAliasProperty(
+function scanOwnerPropertyAssignment(
   text: string,
-  aliasOffset: number,
+  ownerOffset: number,
   sourceOffset: number,
-  alias: string,
-): ScriptProperty | undefined {
-  let cursor = aliasOffset + alias.length;
-  while (cursor < text.length && /\s/.test(text[cursor])) {
-    cursor++;
-  }
-  if (text[cursor] !== '.') {
+  owner: string,
+): ScriptPropertyAssignment | undefined {
+  const chain = scanPropertyPath(text, ownerOffset + owner.length);
+  if (!chain) {
     return;
   }
-  cursor++;
-  while (cursor < text.length && /\s/.test(text[cursor])) {
-    cursor++;
-  }
-  if (!isIdentifierStart(text[cursor])) {
+  const rootName = chain.path[0];
+  if (
+    scriptReservedWords.has(rootName) ||
+    riotV3TagInstanceMembers.has(rootName)
+  ) {
     return;
   }
-  const nameStart = cursor;
-  cursor++;
-  while (cursor < text.length && isIdentifierPart(text[cursor])) {
-    cursor++;
-  }
-  const name = text.slice(nameStart, cursor);
-  if (scriptReservedWords.has(name) || riotV3TagInstanceMembers.has(name)) {
+  const assignedType = inferAssignedPropertyTypeIfAssigned(text, chain.end);
+  if (!assignedType && chain.path.length > 1) {
     return;
   }
   return {
-    name,
-    sourceOffset: sourceOffset + nameStart,
-    typeName: inferAssignedPropertyType(text, cursor),
+    path: chain.path,
+    sourceOffset: sourceOffset + chain.nameStart,
+    typeName:
+      assignedType && !chain.path.includes(dynamicStringIndexProperty)
+        ? assignedType
+        : 'any',
   };
 }
 
@@ -440,42 +468,10 @@ function getDeclarationKeywordAt(
   }
 }
 
-function scanThisProperty(
+function inferAssignedPropertyTypeIfAssigned(
   text: string,
-  thisOffset: number,
-  sourceOffset: number,
-): ScriptProperty | undefined {
-  let cursor = thisOffset + 'this'.length;
-  while (cursor < text.length && /\s/.test(text[cursor])) {
-    cursor++;
-  }
-  if (text[cursor] !== '.') {
-    return;
-  }
-  cursor++;
-  while (cursor < text.length && /\s/.test(text[cursor])) {
-    cursor++;
-  }
-  if (!isIdentifierStart(text[cursor])) {
-    return;
-  }
-  const nameStart = cursor;
-  cursor++;
-  while (cursor < text.length && isIdentifierPart(text[cursor])) {
-    cursor++;
-  }
-  const name = text.slice(nameStart, cursor);
-  if (scriptReservedWords.has(name) || riotV3TagInstanceMembers.has(name)) {
-    return;
-  }
-  return {
-    name,
-    sourceOffset: sourceOffset + nameStart,
-    typeName: inferAssignedPropertyType(text, cursor),
-  };
-}
-
-function inferAssignedPropertyType(text: string, nameEnd: number): string {
+  nameEnd: number,
+): string | undefined {
   let cursor = nameEnd;
   while (cursor < text.length && /\s/.test(text[cursor])) {
     cursor++;
@@ -487,13 +483,229 @@ function inferAssignedPropertyType(text: string, nameEnd: number): string {
     text[cursor - 1] === '<' ||
     text[cursor - 1] === '>'
   ) {
-    return 'any';
+    return;
   }
   cursor++;
   while (cursor < text.length && /\s/.test(text[cursor])) {
     cursor++;
   }
   return inferExpressionType(text, cursor);
+}
+
+function scanPropertyPath(
+  text: string,
+  start: number,
+): { path: string[]; nameStart: number; end: number } | undefined {
+  const path: string[] = [];
+  let cursor = start;
+  let nameStart: number | undefined;
+  for (;;) {
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+    if (text[cursor] === '.') {
+      const property = scanDotPropertyPathPart(text, cursor);
+      if (!property) {
+        break;
+      }
+      nameStart ??= property.nameStart;
+      path.push(property.name);
+      cursor = property.end;
+      continue;
+    }
+    if (text[cursor] === '[') {
+      const property = scanBracketPropertyPathPart(text, cursor);
+      if (!property) {
+        break;
+      }
+      nameStart ??= property.nameStart;
+      path.push(property.name);
+      cursor = property.end;
+      continue;
+    }
+    break;
+  }
+  return path.length && nameStart !== undefined
+    ? { path, nameStart, end: cursor }
+    : undefined;
+}
+
+function scanDotPropertyPathPart(
+  text: string,
+  start: number,
+): { name: string; nameStart: number; end: number } | undefined {
+  let cursor = start + 1;
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  if (!isIdentifierStart(text[cursor])) {
+    return;
+  }
+  const nameStart = cursor;
+  cursor++;
+  while (cursor < text.length && isIdentifierPart(text[cursor])) {
+    cursor++;
+  }
+  return {
+    name: text.slice(nameStart, cursor),
+    nameStart,
+    end: cursor,
+  };
+}
+
+function scanBracketPropertyPathPart(
+  text: string,
+  start: number,
+): { name: string; nameStart: number; end: number } | undefined {
+  const end = scanBalanced(text, start, '[', ']');
+  if (end === undefined) {
+    return;
+  }
+  const expression = text.slice(start + 1, end - 1).trim();
+  return {
+    name:
+      getStaticBracketPropertyName(expression) ?? dynamicStringIndexProperty,
+    nameStart: start,
+    end,
+  };
+}
+
+function getStaticBracketPropertyName(expression: string): string | undefined {
+  if (!expression) {
+    return;
+  }
+  if (
+    (expression[0] === "'" || expression[0] === '"') &&
+    expression[expression.length - 1] === expression[0]
+  ) {
+    const value = expression.slice(1, -1);
+    return isValidIdentifier(value) ? value : expression;
+  }
+  return isNumberLiteral(expression) ? expression : undefined;
+}
+
+function createScriptPropertyFromAssignment(
+  assignment: ScriptPropertyAssignment,
+): ScriptProperty {
+  const [name, ...path] = assignment.path;
+  return {
+    name,
+    sourceOffset: assignment.sourceOffset,
+    typeName: path.length
+      ? createNestedObjectType(path, assignment.typeName)
+      : assignment.typeName,
+  };
+}
+
+function createNestedObjectType(path: string[], typeName: string): string {
+  const [name, ...rest] = path;
+  const nestedType = rest.length
+    ? createNestedObjectType(rest, typeName)
+    : typeName;
+  return formatObjectType([{ name, typeName: nestedType }]);
+}
+
+function mergeScriptProperty(
+  existing: ScriptProperty | undefined,
+  next: ScriptProperty,
+): ScriptProperty {
+  if (!existing) {
+    return next;
+  }
+  const typeName = mergePropertyTypes(existing.typeName, next.typeName);
+  if (typeName !== undefined) {
+    return { ...existing, typeName };
+  }
+  if (existing.typeName === 'any' && next.typeName !== 'any') {
+    return next;
+  }
+  return existing;
+}
+
+function mergePropertyTypes(
+  currentType: string,
+  nextType: string,
+): string | undefined {
+  const currentObject = parseObjectType(currentType);
+  const nextObject = parseObjectType(nextType);
+  if (!currentObject || !nextObject) {
+    return;
+  }
+  const properties = new Map<string, ObjectTypeProperty>();
+  for (const property of currentObject) {
+    properties.set(property.name, property);
+  }
+  for (const property of nextObject) {
+    const existing = properties.get(property.name);
+    if (!existing) {
+      properties.set(property.name, property);
+      continue;
+    }
+    const typeName =
+      mergePropertyTypes(existing.typeName, property.typeName) ??
+      (existing.typeName === 'any' && property.typeName !== 'any'
+        ? property.typeName
+        : existing.typeName);
+    properties.set(property.name, { ...existing, typeName });
+  }
+  return formatObjectType([...properties.values()]);
+}
+
+interface ObjectTypeProperty {
+  name: string;
+  typeName: string;
+}
+
+function parseObjectType(typeName: string): ObjectTypeProperty[] | undefined {
+  const trimmed = typeName.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+    return;
+  }
+  const body = trimmed.slice(1, -1).trim();
+  if (!body) {
+    return [];
+  }
+  const properties: ObjectTypeProperty[] = [];
+  for (const member of splitTopLevelTypeMembers(body)) {
+    const colon = findTopLevelPropertyColon(member);
+    if (colon === undefined) {
+      return;
+    }
+    const name = member.slice(0, colon).trim();
+    const memberType = member.slice(colon + 1).trim();
+    if (!name || !memberType) {
+      return;
+    }
+    properties.push({ name, typeName: memberType });
+  }
+  return properties;
+}
+
+function splitTopLevelTypeMembers(text: string): string[] {
+  const members: string[] = [];
+  let memberStart = 0;
+  let braceDepth = 0;
+  for (let offset = 0; offset <= text.length; offset++) {
+    const char = text[offset];
+    if (char === '{') {
+      braceDepth++;
+    } else if (char === '}') {
+      braceDepth--;
+    } else if ((char === ';' || offset === text.length) && braceDepth === 0) {
+      const member = text.slice(memberStart, offset).trim();
+      if (member) {
+        members.push(member);
+      }
+      memberStart = offset + 1;
+    }
+  }
+  return members;
+}
+
+function formatObjectType(properties: ObjectTypeProperty[]): string {
+  return `{ ${properties
+    .map((property) => `${property.name}: ${property.typeName};`)
+    .join(' ')} }`;
 }
 
 function inferExpressionType(text: string, start: number): string {
@@ -717,6 +929,10 @@ function isNumberLiteralStart(text: string, start: number): boolean {
     /\d/.test(text[start]) ||
     (text[start] === '.' && /\d/.test(text[start + 1] ?? ''))
   );
+}
+
+function isNumberLiteral(text: string): boolean {
+  return /^-?(?:\d+|\d*\.\d+)$/.test(text);
 }
 
 function findArrowAfterExpressionStart(
