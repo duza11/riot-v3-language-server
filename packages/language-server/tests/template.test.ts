@@ -210,6 +210,23 @@ describe('each template expressions', () => {
     expect(itemType).toBe('{ label: string; }');
   });
 
+  it('resolves template object member types from merged script assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ obj.hoge }</p>
+  <p>{ obj.fuga }</p>
+  <script>
+    this.obj = { hoge: 'hoge' }
+    this.obj.fuga = 'fuga'
+  </script>
+</demo-widget>
+`);
+
+    const type = getTemplateIdentifierType(code, 'obj.fuga', 'fuga');
+
+    expect(type).toBe('string');
+  });
+
   it('does not declare unused nested each locals in parent expressions', () => {
     const code = createVirtualCode(`
 <demo-widget>

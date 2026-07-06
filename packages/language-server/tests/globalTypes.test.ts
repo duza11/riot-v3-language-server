@@ -216,6 +216,37 @@ describe('global type virtual code', () => {
     );
   });
 
+  it('merges nested component state assignments into object literal types', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.obj = { hoge: 'hoge' }
+    this.obj.fuga = 'fuga'
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain('obj: { hoge: string; fuga: string; };');
+  });
+
+  it('merges nested component state assignments through this aliases', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.obj = { hoge: 'hoge' }
+    self.obj.fuga = 'fuga'
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain('obj: { hoge: string; fuga: string; };');
+  });
+
   it('creates nested each context types', () => {
     const code = createVirtualCode(`
 <demo-widget>
