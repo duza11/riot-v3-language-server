@@ -227,6 +227,24 @@ describe('each template expressions', () => {
     expect(type).toBe('string');
   });
 
+  it('allows template object member access from dynamic script assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ obj.hoge }</p>
+  <p>{ obj.fuga }</p>
+  <script>
+    const key = 'fuga'
+    this.obj = { hoge: 'hoge' }
+    this.obj[key] = 'fuga'
+  </script>
+</demo-widget>
+`);
+
+    const type = getTemplateIdentifierType(code, 'obj.fuga', 'fuga');
+
+    expect(type).toBe('any');
+  });
+
   it('does not declare unused nested each locals in parent expressions', () => {
     const code = createVirtualCode(`
 <demo-widget>

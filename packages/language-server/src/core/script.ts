@@ -28,6 +28,8 @@ interface ScriptPropertyAssignment {
   typeName: string;
 }
 
+const dynamicStringIndexProperty = '[key: string]';
+
 export function getScriptProperties(
   snapshot: ts.IScriptSnapshot,
   scripts: ScriptBlock[],
@@ -346,7 +348,7 @@ function scanOwnerPropertyAssignment(
   sourceOffset: number,
   owner: string,
 ): ScriptPropertyAssignment | undefined {
-  const chain = scanStaticPropertyChain(text, ownerOffset + owner.length);
+  const chain = scanPropertyPath(text, ownerOffset + owner.length);
   if (!chain) {
     return;
   }
@@ -364,7 +366,10 @@ function scanOwnerPropertyAssignment(
   return {
     path: chain.path,
     sourceOffset: sourceOffset + chain.nameStart,
-    typeName: assignedType ?? 'any',
+    typeName:
+      assignedType && !chain.path.includes(dynamicStringIndexProperty)
+        ? assignedType
+        : 'any',
   };
 }
 
@@ -487,7 +492,7 @@ function inferAssignedPropertyTypeIfAssigned(
   return inferExpressionType(text, cursor);
 }
 
-function scanStaticPropertyChain(
+function scanPropertyPath(
   text: string,
   start: number,
 ): { path: string[]; nameStart: number; end: number } | undefined {
@@ -498,27 +503,85 @@ function scanStaticPropertyChain(
     while (cursor < text.length && /\s/.test(text[cursor])) {
       cursor++;
     }
-    if (text[cursor] !== '.') {
-      break;
+    if (text[cursor] === '.') {
+      const property = scanDotPropertyPathPart(text, cursor);
+      if (!property) {
+        break;
+      }
+      nameStart ??= property.nameStart;
+      path.push(property.name);
+      cursor = property.end;
+      continue;
     }
-    cursor++;
-    while (cursor < text.length && /\s/.test(text[cursor])) {
-      cursor++;
+    if (text[cursor] === '[') {
+      const property = scanBracketPropertyPathPart(text, cursor);
+      if (!property) {
+        break;
+      }
+      nameStart ??= property.nameStart;
+      path.push(property.name);
+      cursor = property.end;
+      continue;
     }
-    if (!isIdentifierStart(text[cursor])) {
-      break;
-    }
-    const partStart = cursor;
-    cursor++;
-    while (cursor < text.length && isIdentifierPart(text[cursor])) {
-      cursor++;
-    }
-    nameStart ??= partStart;
-    path.push(text.slice(partStart, cursor));
+    break;
   }
   return path.length && nameStart !== undefined
     ? { path, nameStart, end: cursor }
     : undefined;
+}
+
+function scanDotPropertyPathPart(
+  text: string,
+  start: number,
+): { name: string; nameStart: number; end: number } | undefined {
+  let cursor = start + 1;
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  if (!isIdentifierStart(text[cursor])) {
+    return;
+  }
+  const nameStart = cursor;
+  cursor++;
+  while (cursor < text.length && isIdentifierPart(text[cursor])) {
+    cursor++;
+  }
+  return {
+    name: text.slice(nameStart, cursor),
+    nameStart,
+    end: cursor,
+  };
+}
+
+function scanBracketPropertyPathPart(
+  text: string,
+  start: number,
+): { name: string; nameStart: number; end: number } | undefined {
+  const end = scanBalanced(text, start, '[', ']');
+  if (end === undefined) {
+    return;
+  }
+  const expression = text.slice(start + 1, end - 1).trim();
+  return {
+    name:
+      getStaticBracketPropertyName(expression) ?? dynamicStringIndexProperty,
+    nameStart: start,
+    end,
+  };
+}
+
+function getStaticBracketPropertyName(expression: string): string | undefined {
+  if (!expression) {
+    return;
+  }
+  if (
+    (expression[0] === "'" || expression[0] === '"') &&
+    expression[expression.length - 1] === expression[0]
+  ) {
+    const value = expression.slice(1, -1);
+    return isValidIdentifier(value) ? value : expression;
+  }
+  return isNumberLiteral(expression) ? expression : undefined;
 }
 
 function createScriptPropertyFromAssignment(
@@ -866,6 +929,10 @@ function isNumberLiteralStart(text: string, start: number): boolean {
     /\d/.test(text[start]) ||
     (text[start] === '.' && /\d/.test(text[start + 1] ?? ''))
   );
+}
+
+function isNumberLiteral(text: string): boolean {
+  return /^-?(?:\d+|\d*\.\d+)$/.test(text);
 }
 
 function findArrowAfterExpressionStart(
