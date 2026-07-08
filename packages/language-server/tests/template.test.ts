@@ -209,6 +209,33 @@ describe('each template expressions', () => {
     expect(itemType).toBe('number');
   });
 
+  it('resolves template method types from JSDoc Riot v3 method syntax', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p each={ num in generateSerealNumbers(5) }>{ num }</p>
+  <script>
+    /**
+     * @param {number} num
+     * @return {number[]}
+     */
+    generateSerealNumbers(num) {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const methodType = getTemplateIdentifierType(
+      code,
+      'generateSerealNumbers(5)',
+      'generateSerealNumbers',
+    );
+    const itemType = getTemplateIdentifierType(code, 'void (num)', 'num');
+
+    expect(methodType).toBe('(num: number) => number[]');
+    expect(itemType).toBe('number');
+  });
+
   it('infers nested Riot v3 each item types from parent each locals', () => {
     const code = createVirtualCode(`
 <demo-widget>

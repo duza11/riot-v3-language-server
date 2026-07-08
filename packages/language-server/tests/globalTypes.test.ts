@@ -79,6 +79,28 @@ describe('global type virtual code', () => {
     );
   });
 
+  it('infers component method types from JSDoc Riot v3 method syntax', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /**
+     * @param {number} num
+     * @return {number[]}
+     */
+    generateSerealNumbers(num) {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'generateSerealNumbers: (num: number) => number[];',
+    );
+  });
+
   it('does not infer local function declarations as component methods', () => {
     const code = createVirtualCode(`
 <demo-widget>

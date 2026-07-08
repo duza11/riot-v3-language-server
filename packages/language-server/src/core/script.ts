@@ -142,10 +142,16 @@ export function scanRiotV3MethodProperties(
       if (method) {
         const name = text.slice(method.nameStart, method.nameEnd);
         if (!riotV3TagInstanceMembers.has(name)) {
+          const typeName =
+            inferJSDocRiotMethodType(
+              text,
+              method.nameEnd,
+              findPrecedingJSDoc(text, method.nameStart),
+            ) ?? '(...args: any[]) => any';
           properties.push({
             name,
             sourceOffset: sourceOffset + method.nameStart,
-            typeName: '(...args: any[]) => any',
+            typeName,
           });
         }
         offset = method.bodyEnd;
@@ -536,6 +542,46 @@ function inferJSDocFunctionType(
     return `${parameter}: ${typeName}`;
   });
   return `(${typedParameters.join(', ')}) => ${jsDocTypes.returnType ?? 'any'}`;
+}
+
+function inferJSDocRiotMethodType(
+  text: string,
+  nameEnd: number,
+  jsDoc: string | undefined,
+): string | undefined {
+  if (!jsDoc) {
+    return;
+  }
+  const parameters = parseRiotMethodParameters(text, nameEnd);
+  if (!parameters) {
+    return;
+  }
+  const jsDocTypes = parseJSDocFunctionTypes(jsDoc);
+  const typedParameters = parameters.map((parameter) => {
+    const typeName = jsDocTypes.params.get(parameter) ?? 'any';
+    return `${parameter}: ${typeName}`;
+  });
+  return `(${typedParameters.join(', ')}) => ${jsDocTypes.returnType ?? 'any'}`;
+}
+
+function parseRiotMethodParameters(
+  text: string,
+  nameEnd: number,
+): string[] | undefined {
+  let cursor = nameEnd;
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  if (text[cursor] !== '(') {
+    return;
+  }
+  const paramsEnd = scanBalanced(text, cursor, '(', ')');
+  if (paramsEnd === undefined) {
+    return;
+  }
+  return splitTopLevelCommaSeparated(text.slice(cursor + 1, paramsEnd - 1))
+    .map(getFunctionParameterName)
+    .filter((name): name is string => name !== undefined);
 }
 
 function parseFunctionExpressionParameters(
