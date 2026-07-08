@@ -500,6 +500,10 @@ function inferAssignedPropertyTypeIfAssigned(
   while (cursor < text.length && /\s/.test(text[cursor])) {
     cursor++;
   }
+  const jsDocType = jsDoc ? parseJSDocType(jsDoc) : undefined;
+  if (jsDocType) {
+    return jsDocType;
+  }
   const jsDocFunctionType = jsDoc
     ? inferJSDocFunctionType(text, cursor, jsDoc)
     : undefined;

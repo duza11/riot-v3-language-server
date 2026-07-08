@@ -79,6 +79,28 @@ describe('global type virtual code', () => {
     );
   });
 
+  it('infers component method types from JSDoc typed arrow function assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    /**
+     * @type {(num: number) => number[]}
+     */
+    self.generateSerealNumbers = (num) => {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'generateSerealNumbers: (num: number) => number[];',
+    );
+  });
+
   it('infers component method types from JSDoc Riot v3 method syntax', () => {
     const code = createVirtualCode(`
 <demo-widget>
