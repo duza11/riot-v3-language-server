@@ -142,10 +142,16 @@ export function scanRiotV3MethodProperties(
       if (method) {
         const name = text.slice(method.nameStart, method.nameEnd);
         if (!riotV3TagInstanceMembers.has(name)) {
+          const typeName =
+            inferJSDocRiotMethodType(
+              text,
+              method.nameEnd,
+              findPrecedingJSDoc(text, method.nameStart),
+            ) ?? '(...args: any[]) => any';
           properties.push({
             name,
             sourceOffset: sourceOffset + method.nameStart,
-            typeName: '(...args: any[]) => any',
+            typeName,
           });
         }
         offset = method.bodyEnd;
@@ -359,7 +365,11 @@ function scanOwnerPropertyAssignment(
   ) {
     return;
   }
-  const assignedType = inferAssignedPropertyTypeIfAssigned(text, chain.end);
+  const assignedType = inferAssignedPropertyTypeIfAssigned(
+    text,
+    chain.end,
+    findPrecedingJSDoc(text, ownerOffset),
+  );
   if (!assignedType && chain.path.length > 1) {
     return;
   }
@@ -471,6 +481,7 @@ function getDeclarationKeywordAt(
 function inferAssignedPropertyTypeIfAssigned(
   text: string,
   nameEnd: number,
+  jsDoc: string | undefined,
 ): string | undefined {
   let cursor = nameEnd;
   while (cursor < text.length && /\s/.test(text[cursor])) {
@@ -489,7 +500,161 @@ function inferAssignedPropertyTypeIfAssigned(
   while (cursor < text.length && /\s/.test(text[cursor])) {
     cursor++;
   }
+  const jsDocType = jsDoc ? parseJSDocType(jsDoc) : undefined;
+  if (jsDocType) {
+    return jsDocType;
+  }
+  const jsDocFunctionType = jsDoc
+    ? inferJSDocFunctionType(text, cursor, jsDoc)
+    : undefined;
+  if (jsDocFunctionType) {
+    return jsDocFunctionType;
+  }
   return inferExpressionType(text, cursor);
+}
+
+function findPrecedingJSDoc(text: string, offset: number): string | undefined {
+  let cursor = offset;
+  while (cursor > 0 && /\s/.test(text[cursor - 1])) {
+    cursor--;
+  }
+  if (!text.slice(0, cursor).endsWith('*/')) {
+    return;
+  }
+  const commentStart = text.lastIndexOf('/**', cursor - 2);
+  if (commentStart === -1) {
+    return;
+  }
+  const commentEnd = scanComment(text, commentStart);
+  return commentEnd === cursor
+    ? text.slice(commentStart, commentEnd)
+    : undefined;
+}
+
+function inferJSDocFunctionType(
+  text: string,
+  start: number,
+  jsDoc: string,
+): string | undefined {
+  const parameters = parseFunctionExpressionParameters(text, start);
+  if (!parameters) {
+    return;
+  }
+  const jsDocTypes = parseJSDocFunctionTypes(jsDoc);
+  const typedParameters = parameters.map((parameter) => {
+    const typeName = jsDocTypes.params.get(parameter) ?? 'any';
+    return `${parameter}: ${typeName}`;
+  });
+  return `(${typedParameters.join(', ')}) => ${jsDocTypes.returnType ?? 'any'}`;
+}
+
+function inferJSDocRiotMethodType(
+  text: string,
+  nameEnd: number,
+  jsDoc: string | undefined,
+): string | undefined {
+  if (!jsDoc) {
+    return;
+  }
+  const parameters = parseRiotMethodParameters(text, nameEnd);
+  if (!parameters) {
+    return;
+  }
+  const jsDocTypes = parseJSDocFunctionTypes(jsDoc);
+  const typedParameters = parameters.map((parameter) => {
+    const typeName = jsDocTypes.params.get(parameter) ?? 'any';
+    return `${parameter}: ${typeName}`;
+  });
+  return `(${typedParameters.join(', ')}) => ${jsDocTypes.returnType ?? 'any'}`;
+}
+
+function parseRiotMethodParameters(
+  text: string,
+  nameEnd: number,
+): string[] | undefined {
+  let cursor = nameEnd;
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  if (text[cursor] !== '(') {
+    return;
+  }
+  const paramsEnd = scanBalanced(text, cursor, '(', ')');
+  if (paramsEnd === undefined) {
+    return;
+  }
+  return splitTopLevelCommaSeparated(text.slice(cursor + 1, paramsEnd - 1))
+    .map(getFunctionParameterName)
+    .filter((name): name is string => name !== undefined);
+}
+
+function parseFunctionExpressionParameters(
+  text: string,
+  start: number,
+): string[] | undefined {
+  if (
+    !text.startsWith('function', start) ||
+    isIdentifierPart(text[start - 1] ?? '') ||
+    isIdentifierPart(text[start + 'function'.length] ?? '')
+  ) {
+    return;
+  }
+  let cursor = start + 'function'.length;
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  if (text[cursor] === '*') {
+    cursor++;
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+  }
+  if (isIdentifierStart(text[cursor])) {
+    cursor = scanIdentifierEnd(text, cursor);
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+  }
+  if (text[cursor] !== '(') {
+    return;
+  }
+  const paramsEnd = scanBalanced(text, cursor, '(', ')');
+  if (paramsEnd === undefined) {
+    return;
+  }
+  return splitTopLevelCommaSeparated(text.slice(cursor + 1, paramsEnd - 1))
+    .map(getFunctionParameterName)
+    .filter((name): name is string => name !== undefined);
+}
+
+function getFunctionParameterName(text: string): string | undefined {
+  const trimmed = text.trim();
+  const withoutRest = trimmed.startsWith('...')
+    ? trimmed.slice(3).trim()
+    : trimmed;
+  const name = withoutRest.split(/[=\s]/, 1)[0];
+  return isValidIdentifier(name) ? name : undefined;
+}
+
+function parseJSDocFunctionTypes(jsDoc: string): {
+  params: Map<string, string>;
+  returnType?: string;
+} {
+  const params = new Map<string, string>();
+  const paramPattern =
+    /@param\s*\{([^}]+)\}\s+(?:\[?([A-Za-z_$][\w$]*)[^\]\s]*\]?)/g;
+  for (
+    let match = paramPattern.exec(jsDoc);
+    match;
+    match = paramPattern.exec(jsDoc)
+  ) {
+    params.set(match[2], match[1].trim());
+  }
+  const returnType = jsDoc.match(/@returns?\s*\{([^}]+)\}/)?.[1]?.trim();
+  return {
+    params,
+    returnType,
+  };
 }
 
 function scanPropertyPath(
@@ -805,6 +970,7 @@ function inferObjectLiteralType(text: string, start: number): string {
       ): property is {
         name: string;
         value: string;
+        typeName?: string;
       } => property !== undefined,
     );
   if (!properties.length) {
@@ -813,7 +979,7 @@ function inferObjectLiteralType(text: string, start: number): string {
   return `{ ${properties
     .map(
       (property) =>
-        `${property.name}: ${inferExpressionType(property.value, 0)};`,
+        `${property.name}: ${property.typeName ?? inferExpressionType(property.value, 0)};`,
     )
     .join(' ')} }`;
 }
@@ -861,8 +1027,9 @@ function splitTopLevelCommaSeparated(text: string): string[] {
 
 function parseObjectLiteralProperty(
   text: string,
-): { name: string; value: string } | undefined {
-  const trimmed = text.trim();
+): { name: string; value: string; typeName?: string } | undefined {
+  const typeName = getLeadingJSDocType(text);
+  const trimmed = stripLeadingComments(text).trim();
   if (!trimmed) {
     return;
   }
@@ -879,7 +1046,50 @@ function parseObjectLiteralProperty(
     return;
   }
   const name = formatObjectLiteralTypePropertyName(rawName);
-  return name ? { name, value } : undefined;
+  return name ? { name, value, typeName } : undefined;
+}
+
+function getLeadingJSDocType(text: string): string | undefined {
+  let cursor = 0;
+  while (cursor < text.length) {
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+    if (
+      text[cursor] !== '/' ||
+      (text[cursor + 1] !== '/' && text[cursor + 1] !== '*')
+    ) {
+      return;
+    }
+    const commentEnd = scanComment(text, cursor);
+    const typeName = parseJSDocType(text.slice(cursor, commentEnd));
+    if (typeName) {
+      return typeName;
+    }
+    cursor = commentEnd;
+  }
+}
+
+function parseJSDocType(comment: string): string | undefined {
+  const match = comment.match(/@type\s*\{([^}]+)\}/);
+  return match?.[1]?.trim();
+}
+
+function stripLeadingComments(text: string): string {
+  let cursor = 0;
+  for (;;) {
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+    if (
+      text[cursor] !== '/' ||
+      (text[cursor + 1] !== '/' && text[cursor + 1] !== '*')
+    ) {
+      break;
+    }
+    cursor = scanComment(text, cursor);
+  }
+  return text.slice(cursor);
 }
 
 function findTopLevelPropertyColon(text: string): number | undefined {

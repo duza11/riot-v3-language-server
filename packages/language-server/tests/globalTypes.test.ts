@@ -56,6 +56,73 @@ describe('global type virtual code', () => {
     expect(globals).not.toContain('unction: (...args: any[]) => any;');
   });
 
+  it('infers component method types from JSDoc function assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    /**
+     * @param {number} num
+     * @return {number[]}
+     */
+    self.generateSerealNumbers = function (num) {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'generateSerealNumbers: (num: number) => number[];',
+    );
+  });
+
+  it('infers component method types from JSDoc typed arrow function assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    /**
+     * @type {(num: number) => number[]}
+     */
+    self.generateSerealNumbers = (num) => {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'generateSerealNumbers: (num: number) => number[];',
+    );
+  });
+
+  it('infers component method types from JSDoc Riot v3 method syntax', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /**
+     * @param {number} num
+     * @return {number[]}
+     */
+    generateSerealNumbers(num) {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'generateSerealNumbers: (num: number) => number[];',
+    );
+  });
+
   it('does not infer local function declarations as component methods', () => {
     const code = createVirtualCode(`
 <demo-widget>
@@ -213,6 +280,27 @@ describe('global type virtual code', () => {
 
     expect(globals).toContain(
       'groups: { name: string; items: { label: string; }[]; }[];',
+    );
+  });
+
+  it('infers object literal property types from JSDoc comments in script assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.obj = {
+      hoge: 1,
+      /** @type {number} */
+      fuga: 'aaa',
+      piyo: 2,
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'obj: { hoge: number; fuga: number; piyo: number; };',
     );
   });
 

@@ -181,6 +181,88 @@ describe('each template expressions', () => {
     expect(indexType).toBe('number');
   });
 
+  it('resolves template method types from script JSDoc function assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p each={ num in generateSerealNumbers(5) }>{ num }</p>
+  <script>
+    const self = this
+    /**
+     * @param {number} num
+     * @return {number[]}
+     */
+    self.generateSerealNumbers = function (num) {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const methodType = getTemplateIdentifierType(
+      code,
+      'generateSerealNumbers(5)',
+      'generateSerealNumbers',
+    );
+    const itemType = getTemplateIdentifierType(code, 'void (num)', 'num');
+
+    expect(methodType).toBe('(num: number) => number[]');
+    expect(itemType).toBe('number');
+  });
+
+  it('resolves template method types from JSDoc typed arrow function assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p each={ num in generateSerealNumbers(5) }>{ num }</p>
+  <script>
+    const self = this
+    /**
+     * @type {(num: number) => number[]}
+     */
+    self.generateSerealNumbers = (num) => {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const methodType = getTemplateIdentifierType(
+      code,
+      'generateSerealNumbers(5)',
+      'generateSerealNumbers',
+    );
+    const itemType = getTemplateIdentifierType(code, 'void (num)', 'num');
+
+    expect(methodType).toBe('(num: number) => number[]');
+    expect(itemType).toBe('number');
+  });
+
+  it('resolves template method types from JSDoc Riot v3 method syntax', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p each={ num in generateSerealNumbers(5) }>{ num }</p>
+  <script>
+    /**
+     * @param {number} num
+     * @return {number[]}
+     */
+    generateSerealNumbers(num) {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const methodType = getTemplateIdentifierType(
+      code,
+      'generateSerealNumbers(5)',
+      'generateSerealNumbers',
+    );
+    const itemType = getTemplateIdentifierType(code, 'void (num)', 'num');
+
+    expect(methodType).toBe('(num: number) => number[]');
+    expect(itemType).toBe('number');
+  });
+
   it('infers nested Riot v3 each item types from parent each locals', () => {
     const code = createVirtualCode(`
 <demo-widget>
@@ -225,6 +307,27 @@ describe('each template expressions', () => {
     const type = getTemplateIdentifierType(code, 'obj.fuga', 'fuga');
 
     expect(type).toBe('string');
+  });
+
+  it('resolves template object member types from script JSDoc comments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ obj.fuga }</p>
+  <script>
+    const self = this
+    self.obj = {
+      hoge: 1,
+      /** @type {number} */
+      fuga: 'aaa',
+      piyo: 2,
+    }
+  </script>
+</demo-widget>
+`);
+
+    const type = getTemplateIdentifierType(code, 'obj.fuga', 'fuga');
+
+    expect(type).toBe('number');
   });
 
   it('allows template object member access from dynamic script assignments', () => {
