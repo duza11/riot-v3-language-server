@@ -227,7 +227,7 @@ describe('each template expressions', () => {
     expect(type).toBe('string');
   });
 
-  it('resolves template object members declared after JSDoc comments', () => {
+  it('resolves template object member types from script JSDoc comments', () => {
     const code = createVirtualCode(`
 <demo-widget>
   <p>{ obj.fuga }</p>
@@ -236,7 +236,7 @@ describe('each template expressions', () => {
     self.obj = {
       hoge: 1,
       /** @type {number} */
-      fuga: 1,
+      fuga: 'aaa',
       piyo: 2,
     }
   </script>

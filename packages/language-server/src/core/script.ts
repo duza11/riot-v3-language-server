@@ -805,6 +805,7 @@ function inferObjectLiteralType(text: string, start: number): string {
       ): property is {
         name: string;
         value: string;
+        typeName?: string;
       } => property !== undefined,
     );
   if (!properties.length) {
@@ -813,7 +814,7 @@ function inferObjectLiteralType(text: string, start: number): string {
   return `{ ${properties
     .map(
       (property) =>
-        `${property.name}: ${inferExpressionType(property.value, 0)};`,
+        `${property.name}: ${property.typeName ?? inferExpressionType(property.value, 0)};`,
     )
     .join(' ')} }`;
 }
@@ -861,7 +862,8 @@ function splitTopLevelCommaSeparated(text: string): string[] {
 
 function parseObjectLiteralProperty(
   text: string,
-): { name: string; value: string } | undefined {
+): { name: string; value: string; typeName?: string } | undefined {
+  const typeName = getLeadingJSDocType(text);
   const trimmed = stripLeadingComments(text).trim();
   if (!trimmed) {
     return;
@@ -879,7 +881,33 @@ function parseObjectLiteralProperty(
     return;
   }
   const name = formatObjectLiteralTypePropertyName(rawName);
-  return name ? { name, value } : undefined;
+  return name ? { name, value, typeName } : undefined;
+}
+
+function getLeadingJSDocType(text: string): string | undefined {
+  let cursor = 0;
+  while (cursor < text.length) {
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+    if (
+      text[cursor] !== '/' ||
+      (text[cursor + 1] !== '/' && text[cursor + 1] !== '*')
+    ) {
+      return;
+    }
+    const commentEnd = scanComment(text, cursor);
+    const typeName = parseJSDocType(text.slice(cursor, commentEnd));
+    if (typeName) {
+      return typeName;
+    }
+    cursor = commentEnd;
+  }
+}
+
+function parseJSDocType(comment: string): string | undefined {
+  const match = comment.match(/@type\s*\{([^}]+)\}/);
+  return match?.[1]?.trim();
 }
 
 function stripLeadingComments(text: string): string {

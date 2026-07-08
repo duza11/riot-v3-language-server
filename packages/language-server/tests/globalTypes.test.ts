@@ -216,14 +216,14 @@ describe('global type virtual code', () => {
     );
   });
 
-  it('infers object literal properties with JSDoc comments from script assignments', () => {
+  it('infers object literal property types from JSDoc comments in script assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
   <script>
     this.obj = {
       hoge: 1,
       /** @type {number} */
-      fuga: 1,
+      fuga: 'aaa',
       piyo: 2,
     }
   </script>
