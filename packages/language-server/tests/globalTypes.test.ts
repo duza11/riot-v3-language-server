@@ -216,6 +216,27 @@ describe('global type virtual code', () => {
     );
   });
 
+  it('infers object literal properties with JSDoc comments from script assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.obj = {
+      hoge: 1,
+      /** @type {number} */
+      fuga: 1,
+      piyo: 2,
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'obj: { hoge: number; fuga: number; piyo: number; };',
+    );
+  });
+
   it('merges nested component state assignments into object literal types', () => {
     const code = createVirtualCode(`
 <demo-widget>

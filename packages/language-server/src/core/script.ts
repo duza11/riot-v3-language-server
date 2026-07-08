@@ -862,7 +862,7 @@ function splitTopLevelCommaSeparated(text: string): string[] {
 function parseObjectLiteralProperty(
   text: string,
 ): { name: string; value: string } | undefined {
-  const trimmed = text.trim();
+  const trimmed = stripLeadingComments(text).trim();
   if (!trimmed) {
     return;
   }
@@ -880,6 +880,23 @@ function parseObjectLiteralProperty(
   }
   const name = formatObjectLiteralTypePropertyName(rawName);
   return name ? { name, value } : undefined;
+}
+
+function stripLeadingComments(text: string): string {
+  let cursor = 0;
+  for (;;) {
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+    if (
+      text[cursor] !== '/' ||
+      (text[cursor + 1] !== '/' && text[cursor + 1] !== '*')
+    ) {
+      break;
+    }
+    cursor = scanComment(text, cursor);
+  }
+  return text.slice(cursor);
 }
 
 function findTopLevelPropertyColon(text: string): number | undefined {

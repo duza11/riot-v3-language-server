@@ -227,6 +227,27 @@ describe('each template expressions', () => {
     expect(type).toBe('string');
   });
 
+  it('resolves template object members declared after JSDoc comments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ obj.fuga }</p>
+  <script>
+    const self = this
+    self.obj = {
+      hoge: 1,
+      /** @type {number} */
+      fuga: 1,
+      piyo: 2,
+    }
+  </script>
+</demo-widget>
+`);
+
+    const type = getTemplateIdentifierType(code, 'obj.fuga', 'fuga');
+
+    expect(type).toBe('number');
+  });
+
   it('allows template object member access from dynamic script assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
