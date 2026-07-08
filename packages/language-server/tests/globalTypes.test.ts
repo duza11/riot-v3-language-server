@@ -56,6 +56,29 @@ describe('global type virtual code', () => {
     expect(globals).not.toContain('unction: (...args: any[]) => any;');
   });
 
+  it('infers component method types from JSDoc function assignments', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    /**
+     * @param {number} num
+     * @return {number[]}
+     */
+    self.generateSerealNumbers = function (num) {
+      return [...Array(num)].map((_, i) => i)
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'generateSerealNumbers: (num: number) => number[];',
+    );
+  });
+
   it('does not infer local function declarations as component methods', () => {
     const code = createVirtualCode(`
 <demo-widget>

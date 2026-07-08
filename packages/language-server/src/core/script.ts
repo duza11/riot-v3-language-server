@@ -359,7 +359,11 @@ function scanOwnerPropertyAssignment(
   ) {
     return;
   }
-  const assignedType = inferAssignedPropertyTypeIfAssigned(text, chain.end);
+  const assignedType = inferAssignedPropertyTypeIfAssigned(
+    text,
+    chain.end,
+    findPrecedingJSDoc(text, ownerOffset),
+  );
   if (!assignedType && chain.path.length > 1) {
     return;
   }
@@ -471,6 +475,7 @@ function getDeclarationKeywordAt(
 function inferAssignedPropertyTypeIfAssigned(
   text: string,
   nameEnd: number,
+  jsDoc: string | undefined,
 ): string | undefined {
   let cursor = nameEnd;
   while (cursor < text.length && /\s/.test(text[cursor])) {
@@ -489,7 +494,117 @@ function inferAssignedPropertyTypeIfAssigned(
   while (cursor < text.length && /\s/.test(text[cursor])) {
     cursor++;
   }
+  const jsDocFunctionType = jsDoc
+    ? inferJSDocFunctionType(text, cursor, jsDoc)
+    : undefined;
+  if (jsDocFunctionType) {
+    return jsDocFunctionType;
+  }
   return inferExpressionType(text, cursor);
+}
+
+function findPrecedingJSDoc(text: string, offset: number): string | undefined {
+  let cursor = offset;
+  while (cursor > 0 && /\s/.test(text[cursor - 1])) {
+    cursor--;
+  }
+  if (!text.slice(0, cursor).endsWith('*/')) {
+    return;
+  }
+  const commentStart = text.lastIndexOf('/**', cursor - 2);
+  if (commentStart === -1) {
+    return;
+  }
+  const commentEnd = scanComment(text, commentStart);
+  return commentEnd === cursor
+    ? text.slice(commentStart, commentEnd)
+    : undefined;
+}
+
+function inferJSDocFunctionType(
+  text: string,
+  start: number,
+  jsDoc: string,
+): string | undefined {
+  const parameters = parseFunctionExpressionParameters(text, start);
+  if (!parameters) {
+    return;
+  }
+  const jsDocTypes = parseJSDocFunctionTypes(jsDoc);
+  const typedParameters = parameters.map((parameter) => {
+    const typeName = jsDocTypes.params.get(parameter) ?? 'any';
+    return `${parameter}: ${typeName}`;
+  });
+  return `(${typedParameters.join(', ')}) => ${jsDocTypes.returnType ?? 'any'}`;
+}
+
+function parseFunctionExpressionParameters(
+  text: string,
+  start: number,
+): string[] | undefined {
+  if (
+    !text.startsWith('function', start) ||
+    isIdentifierPart(text[start - 1] ?? '') ||
+    isIdentifierPart(text[start + 'function'.length] ?? '')
+  ) {
+    return;
+  }
+  let cursor = start + 'function'.length;
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  if (text[cursor] === '*') {
+    cursor++;
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+  }
+  if (isIdentifierStart(text[cursor])) {
+    cursor = scanIdentifierEnd(text, cursor);
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+  }
+  if (text[cursor] !== '(') {
+    return;
+  }
+  const paramsEnd = scanBalanced(text, cursor, '(', ')');
+  if (paramsEnd === undefined) {
+    return;
+  }
+  return splitTopLevelCommaSeparated(text.slice(cursor + 1, paramsEnd - 1))
+    .map(getFunctionParameterName)
+    .filter((name): name is string => name !== undefined);
+}
+
+function getFunctionParameterName(text: string): string | undefined {
+  const trimmed = text.trim();
+  const withoutRest = trimmed.startsWith('...')
+    ? trimmed.slice(3).trim()
+    : trimmed;
+  const name = withoutRest.split(/[=\s]/, 1)[0];
+  return isValidIdentifier(name) ? name : undefined;
+}
+
+function parseJSDocFunctionTypes(jsDoc: string): {
+  params: Map<string, string>;
+  returnType?: string;
+} {
+  const params = new Map<string, string>();
+  const paramPattern =
+    /@param\s*\{([^}]+)\}\s+(?:\[?([A-Za-z_$][\w$]*)[^\]\s]*\]?)/g;
+  for (
+    let match = paramPattern.exec(jsDoc);
+    match;
+    match = paramPattern.exec(jsDoc)
+  ) {
+    params.set(match[2], match[1].trim());
+  }
+  const returnType = jsDoc.match(/@returns?\s*\{([^}]+)\}/)?.[1]?.trim();
+  return {
+    params,
+    returnType,
+  };
 }
 
 function scanPropertyPath(
