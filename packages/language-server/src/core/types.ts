@@ -36,6 +36,11 @@ export interface ScriptProperty {
   typeName: string;
 }
 
+export interface JSDocTypedef {
+  name: string;
+  typeName: string;
+}
+
 export type ScriptLanguageId =
   | 'javascript'
   | 'javascriptreact'

@@ -330,6 +330,31 @@ describe('each template expressions', () => {
     expect(type).toBe('number');
   });
 
+  it('resolves template object member types from JSDoc object typedefs', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ file.path }</p>
+  <script>
+    const self = this
+    /**
+     * @typedef {Object} F
+     * @property {string} path
+     * @property {number} size
+     */
+    /** @type {F} */
+    self.file = {
+      path: 'path/to/memo.txt',
+      size: 1024,
+    }
+  </script>
+</demo-widget>
+`);
+
+    const type = getTemplateIdentifierType(code, 'file.path', 'path');
+
+    expect(type).toBe('string');
+  });
+
   it('allows template object member access from dynamic script assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
