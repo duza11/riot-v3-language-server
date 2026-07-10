@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getTemplatePropertyDoesNotExistDiagnostics } from './helpers/typescript';
 import {
   createVirtualCode,
   getGlobalTypesText,
@@ -441,5 +442,35 @@ describe('global type virtual code', () => {
     expect(globals).toContain(
       'interface RiotV3TemplateInstance_1 extends RiotV3TemplateInstance, RiotV3ComponentState_1 {}',
     );
+  });
+
+  it('isolates component state types between tag files', () => {
+    const firstCode = createVirtualCode(
+      `
+<test>
+  <p>{ obj.hoge }</p>
+  <script>
+    const self = this
+    self.obj = { hoge: 1 }
+  </script>
+</test>
+`,
+      '/workspace/test.tag',
+    );
+    const secondCode = createVirtualCode(
+      `
+<test2>
+  <p>{ obj.fuga }</p>
+  <script>
+    const self = this
+    self.obj = { fuga: 1 }
+  </script>
+</test2>
+`,
+      '/workspace/test2.tag',
+    );
+    expect(
+      getTemplatePropertyDoesNotExistDiagnostics([firstCode, secondCode]),
+    ).toEqual([]);
   });
 });

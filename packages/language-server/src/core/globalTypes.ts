@@ -84,12 +84,13 @@ export interface GeneratedRiotV3GlobalTypes {
 
 export function generateRiotV3GlobalTypes(
   components: RiotV3GlobalTypesComponentData[],
+  fileTypeScope?: string,
 ): GeneratedRiotV3GlobalTypes {
   const dynamicTypeSegments: GeneratedSegment[] = [];
   for (let index = 0; index < components.length; index++) {
     const { scriptProperties, eachDepthCount } = components[index];
     dynamicTypeSegments.push({
-      text: `\ninterface RiotV3ComponentState_${index} {\n`,
+      text: `\ninterface ${getComponentStateTypeName(index, fileTypeScope)} {\n`,
     });
     for (const property of scriptProperties) {
       dynamicTypeSegments.push({ text: '\t' });
@@ -102,20 +103,25 @@ export function generateRiotV3GlobalTypes(
     }
     dynamicTypeSegments.push({ text: '}\n' });
 
+    const typeNames = getComponentTypeNames(index, fileTypeScope);
     dynamicTypeSegments.push({
-      text: `\ninterface RiotV3TagInstance_${index} extends RiotV3TagInstance, RiotV3ComponentState_${index} {}\n`,
+      text: `\ninterface ${typeNames.tagInstance} extends RiotV3TagInstance, ${getComponentStateTypeName(index, fileTypeScope)} {}\n`,
     });
     dynamicTypeSegments.push({
-      text: `\ninterface RiotV3TemplateInstance_${index} extends RiotV3TemplateInstance, RiotV3ComponentState_${index} {}\n`,
+      text: `\ninterface ${typeNames.templateInstance} extends RiotV3TemplateInstance, ${getComponentStateTypeName(index, fileTypeScope)} {}\n`,
     });
     for (let depth = 0; depth < Math.max(1, eachDepthCount); depth++) {
-      const eachContextName = getEachContextTypeName(index, depth);
+      const eachContextName = getEachContextTypeName(
+        index,
+        depth,
+        fileTypeScope,
+      );
       const parentTypeName =
         depth === 0
-          ? `RiotV3TemplateInstance_${index}`
-          : getEachContextTypeName(index, depth - 1);
+          ? typeNames.templateInstance
+          : getEachContextTypeName(index, depth - 1, fileTypeScope);
       dynamicTypeSegments.push({
-        text: `\ninterface ${eachContextName} extends RiotV3EachContext, RiotV3TemplateInstance_${index} {\n\tparent: ${parentTypeName};\n}\n`,
+        text: `\ninterface ${eachContextName} extends RiotV3EachContext, ${typeNames.templateInstance} {\n\tparent: ${parentTypeName};\n}\n`,
       });
     }
   }
@@ -126,23 +132,70 @@ export function generateRiotV3GlobalTypes(
   };
 }
 
-export function getComponentTypeNames(index: number): {
+export function getComponentTypeNames(
+  index: number,
+  fileTypeScope?: string,
+): {
   tagInstance: string;
   templateInstance: string;
   eachContext: string;
 } {
   return {
-    tagInstance: `RiotV3TagInstance_${index}`,
-    templateInstance: `RiotV3TemplateInstance_${index}`,
-    eachContext: getEachContextTypeName(index, 0),
+    tagInstance: getComponentTypeName(
+      'RiotV3TagInstance',
+      index,
+      fileTypeScope,
+    ),
+    templateInstance: getComponentTypeName(
+      'RiotV3TemplateInstance',
+      index,
+      fileTypeScope,
+    ),
+    eachContext: getEachContextTypeName(index, 0, fileTypeScope),
   };
 }
 
 export function getEachContextTypeName(
   componentIndex: number,
   depth: number,
+  fileTypeScope?: string,
 ): string {
+  const componentScope = getComponentTypeScope(componentIndex, fileTypeScope);
   return depth === 0
-    ? `RiotV3EachContext_${componentIndex}`
-    : `RiotV3EachContext_${componentIndex}_${depth}`;
+    ? `RiotV3EachContext_${componentScope}`
+    : `RiotV3EachContext_${componentScope}_${depth}`;
+}
+
+export function getRiotV3FileTypeScope(fileName: string): string {
+  return Array.from(fileName, (character) =>
+    character.codePointAt(0)?.toString(16),
+  ).join('_');
+}
+
+function getComponentStateTypeName(
+  componentIndex: number,
+  fileTypeScope?: string,
+): string {
+  return getComponentTypeName(
+    'RiotV3ComponentState',
+    componentIndex,
+    fileTypeScope,
+  );
+}
+
+function getComponentTypeName(
+  prefix: string,
+  componentIndex: number,
+  fileTypeScope?: string,
+): string {
+  return `${prefix}_${getComponentTypeScope(componentIndex, fileTypeScope)}`;
+}
+
+function getComponentTypeScope(
+  componentIndex: number,
+  fileTypeScope?: string,
+): string {
+  return fileTypeScope
+    ? `${fileTypeScope}_${componentIndex}`
+    : `${componentIndex}`;
 }

@@ -24,9 +24,9 @@ export const riotV3LanguagePlugin: LanguagePlugin<URI> = {
       return 'riot_v3';
     }
   },
-  createVirtualCode(_uri, languageId, snapshot) {
+  createVirtualCode(uri, languageId, snapshot) {
     if (languageId === 'riot_v3') {
-      return new RiotV3VirtualCode(snapshot);
+      return new RiotV3VirtualCode(snapshot, uri.path);
     }
   },
   typescript: {

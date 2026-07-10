@@ -65,3 +65,81 @@ export function getTemplateIdentifierType(
   }
   return result;
 }
+
+export function getTemplatePropertyDoesNotExistDiagnostics(
+  codes: RiotV3VirtualCode[],
+): readonly ts.Diagnostic[] {
+  const sourceFiles = createTemplateSourceFiles(codes);
+  const options: ts.CompilerOptions = {
+    strict: true,
+    noEmit: true,
+    lib: ['lib.esnext.d.ts', 'lib.dom.d.ts'],
+  };
+  const host = ts.createCompilerHost(options);
+  const getSourceFile = host.getSourceFile.bind(host);
+  const sourceFilesByName = new Map(
+    sourceFiles.map((sourceFile) => [sourceFile.fileName, sourceFile]),
+  );
+  host.getSourceFile = (
+    requestedFileName,
+    languageVersion,
+    onError,
+    shouldCreateNewSourceFile,
+  ) =>
+    sourceFilesByName.get(requestedFileName) ??
+    getSourceFile(
+      requestedFileName,
+      languageVersion,
+      onError,
+      shouldCreateNewSourceFile,
+    );
+  const program = ts.createProgram(
+    sourceFiles.map((sourceFile) => sourceFile.fileName),
+    options,
+    host,
+  );
+
+  return sourceFiles.flatMap((sourceFile) =>
+    program
+      .getSemanticDiagnostics(sourceFile)
+      .filter((diagnostic) => diagnostic.code === 2339),
+  );
+}
+
+function createTemplateSourceFiles(
+  codes: RiotV3VirtualCode[],
+): ts.SourceFile[] {
+  if (!codes.length) {
+    throw new Error('At least one virtual code is required.');
+  }
+  const globalTypes = codes.map((code) =>
+    getEmbeddedText(code, 'riot_v3_globals'),
+  );
+  const dynamicTypesOffset = globalTypes[0].indexOf(
+    '\ninterface RiotV3ComponentState_',
+  );
+  if (dynamicTypesOffset === -1) {
+    throw new Error('Riot v3 component state types were not found.');
+  }
+  const sharedGlobalTypes = globalTypes[0].slice(0, dynamicTypesOffset);
+  const combinedGlobalTypes =
+    sharedGlobalTypes +
+    globalTypes.map((types) => types.slice(dynamicTypesOffset)).join('');
+
+  return [
+    ts.createSourceFile(
+      '/virtual/riot-v3-globals.d.ts',
+      combinedGlobalTypes,
+      ts.ScriptTarget.Latest,
+      true,
+    ),
+    ...codes.map((code, index) =>
+      ts.createSourceFile(
+        `/virtual/riot-template-${index}.ts`,
+        getEmbeddedText(code, 'template'),
+        ts.ScriptTarget.Latest,
+        true,
+      ),
+    ),
+  ];
+}
