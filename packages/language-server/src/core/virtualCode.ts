@@ -9,6 +9,7 @@ import {
 import {
   generateRiotV3GlobalTypes,
   getComponentTypeNames,
+  getRiotV3FileTypeScope,
   type RiotV3GlobalTypesComponentData,
 } from './globalTypes';
 import {
@@ -35,7 +36,10 @@ export class RiotV3VirtualCode implements VirtualCode {
 
   htmlDocument: html.HTMLDocument;
 
-  constructor(public snapshot: ts.IScriptSnapshot) {
+  constructor(
+    public snapshot: ts.IScriptSnapshot,
+    fileName?: string,
+  ) {
     this.mappings = [
       {
         sourceOffsets: [0],
@@ -63,6 +67,9 @@ export class RiotV3VirtualCode implements VirtualCode {
       snapshot.getLength(),
       this.htmlDocument,
     );
+    const fileTypeScope = fileName
+      ? getRiotV3FileTypeScope(fileName)
+      : undefined;
     this.styleNodes = components.flatMap((component) => component.styles);
     this.scriptNodes = components.flatMap((component) => component.scriptNodes);
     const componentAnalyses = components.map((component) => ({
@@ -78,12 +85,13 @@ export class RiotV3VirtualCode implements VirtualCode {
       ),
     }));
     this.embeddedCodes = [
-      ...getRiotV3EmbeddedCodes(snapshot, componentAnalyses),
+      ...getRiotV3EmbeddedCodes(snapshot, componentAnalyses, fileTypeScope),
       createRiotV3GlobalTypesVirtualCode(
         componentAnalyses.map(({ component, templateAnalysis }) => ({
           scriptProperties: getScriptProperties(snapshot, component.scripts),
           eachDepthCount: templateAnalysis.eachDepthCount,
         })),
+        fileTypeScope,
       ),
     ];
   }
@@ -91,8 +99,9 @@ export class RiotV3VirtualCode implements VirtualCode {
 
 function createRiotV3GlobalTypesVirtualCode(
   components: RiotV3GlobalTypesComponentData[],
+  fileTypeScope?: string,
 ): VirtualCode {
-  const generated = generateRiotV3GlobalTypes(components);
+  const generated = generateRiotV3GlobalTypes(components, fileTypeScope);
   let generatedText = generated.text;
   const sourceOffsets: number[] = [];
   const generatedOffsets: number[] = [];
@@ -142,11 +151,15 @@ function* getRiotV3EmbeddedCodes(
     component: RiotV3Component;
     templateAnalysis: TemplateAnalysis;
   }[],
+  fileTypeScope?: string,
 ): Generator<VirtualCode> {
   let styleIndex = 0;
   let scriptIndex = 0;
   for (const { component, templateAnalysis } of componentAnalyses) {
-    const componentTypeNames = getComponentTypeNames(component.index);
+    const componentTypeNames = getComponentTypeNames(
+      component.index,
+      fileTypeScope,
+    );
 
     for (const style of component.styles) {
       if (style.startTagEnd !== undefined && style.endTagStart !== undefined) {
