@@ -1,4 +1,4 @@
-import type { GeneratedSegment, ScriptProperty } from './types';
+import type { GeneratedSegment, JSDocTypedef, ScriptProperty } from './types';
 
 const riotV3GlobalTypes = `
 type RiotV3Selector = string | HTMLElement | NodeList | ArrayLike<HTMLElement>;
@@ -74,6 +74,7 @@ declare const opts: RiotV3TagInstance['opts'];
 
 export interface RiotV3GlobalTypesComponentData {
   scriptProperties: ScriptProperty[];
+  jsDocTypedefs: JSDocTypedef[];
   eachDepthCount: number;
 }
 
@@ -88,7 +89,19 @@ export function generateRiotV3GlobalTypes(
 ): GeneratedRiotV3GlobalTypes {
   const dynamicTypeSegments: GeneratedSegment[] = [];
   for (let index = 0; index < components.length; index++) {
-    const { scriptProperties, eachDepthCount } = components[index];
+    const { scriptProperties, jsDocTypedefs, eachDepthCount } =
+      components[index];
+    const jsDocTypedefNames = new Map(
+      jsDocTypedefs.map((typedef) => [
+        typedef.name,
+        getJSDocTypedefTypeName(index, typedef.name, fileTypeScope),
+      ]),
+    );
+    for (const typedef of jsDocTypedefs) {
+      dynamicTypeSegments.push({
+        text: `\ntype ${jsDocTypedefNames.get(typedef.name)} = ${resolveJSDocTypedefReferences(typedef.typeName, jsDocTypedefNames)};\n`,
+      });
+    }
     dynamicTypeSegments.push({
       text: `\ninterface ${getComponentStateTypeName(index, fileTypeScope)} {\n`,
     });
@@ -99,7 +112,12 @@ export function generateRiotV3GlobalTypes(
         sourceOffset: property.sourceOffset,
         length: property.name.length,
       });
-      dynamicTypeSegments.push({ text: ': ' + property.typeName + ';\n' });
+      dynamicTypeSegments.push({
+        text:
+          ': ' +
+          resolveJSDocTypedefReferences(property.typeName, jsDocTypedefNames) +
+          ';\n',
+      });
     }
     dynamicTypeSegments.push({ text: '}\n' });
 
@@ -180,6 +198,24 @@ function getComponentStateTypeName(
     'RiotV3ComponentState',
     componentIndex,
     fileTypeScope,
+  );
+}
+
+function getJSDocTypedefTypeName(
+  componentIndex: number,
+  typedefName: string,
+  fileTypeScope?: string,
+): string {
+  return `${getComponentTypeName('RiotV3JSDocTypedef', componentIndex, fileTypeScope)}_${typedefName}`;
+}
+
+function resolveJSDocTypedefReferences(
+  typeName: string,
+  typedefNames: Map<string, string>,
+): string {
+  return typeName.replace(
+    /\b[A-Za-z_$][\w$]*\b/g,
+    (identifier) => typedefNames.get(identifier) ?? identifier,
   );
 }
 

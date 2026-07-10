@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getScriptIdentifierType } from './helpers/typescript';
 import {
   createVirtualCode,
   expectGeneratedOffsetNotOnMappedBoundaries,
@@ -39,6 +40,31 @@ describe('script virtual code', () => {
 
     expect(script).toContain('function greet () {');
     expect(script).not.toContain('this.greet = function');
+  });
+
+  it('resolves script object member types from JSDoc object typedefs', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    /**
+     * @typedef {Object} F
+     * @property {string} path
+     * @property {number} size
+     */
+    /** @type {F} */
+    self.file = {
+      path: 'path/to/memo.txt',
+      size: 1024,
+    }
+    console.log(self.file.path)
+  </script>
+</demo-widget>
+`);
+
+    const type = getScriptIdentifierType(code, 'self.file.path', 'path');
+
+    expect(type).toBe('string');
   });
 
   it('converts Riot v3 top-level method syntax', () => {

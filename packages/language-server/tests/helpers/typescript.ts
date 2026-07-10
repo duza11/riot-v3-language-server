@@ -7,10 +7,43 @@ export function getTemplateIdentifierType(
   marker: string,
   identifier: string,
 ): string {
+  return getEmbeddedIdentifierType(
+    code,
+    'template',
+    '/virtual/riot-template.ts',
+    ts.ScriptKind.TS,
+    marker,
+    identifier,
+  );
+}
+
+export function getScriptIdentifierType(
+  code: RiotV3VirtualCode,
+  marker: string,
+  identifier: string,
+): string {
+  return getEmbeddedIdentifierType(
+    code,
+    'script_0',
+    '/virtual/riot-script.js',
+    ts.ScriptKind.JS,
+    marker,
+    identifier,
+  );
+}
+
+function getEmbeddedIdentifierType(
+  code: RiotV3VirtualCode,
+  embeddedCodeId: string,
+  fileName: string,
+  scriptKind: ts.ScriptKind,
+  marker: string,
+  identifier: string,
+): string {
   const text =
     getEmbeddedText(code, 'riot_v3_globals') +
     '\n' +
-    getEmbeddedText(code, 'template');
+    getEmbeddedText(code, embeddedCodeId);
   const markerOffset = text.indexOf(marker);
   if (markerOffset === -1) {
     throw new Error(`Marker "${marker}" was not found.`);
@@ -20,8 +53,8 @@ export function getTemplateIdentifierType(
     throw new Error(`Identifier "${identifier}" was not found.`);
   }
   const identifierOffset = markerOffset + markerIdentifierOffset;
-  const fileName = '/virtual/riot-template.ts';
   const options: ts.CompilerOptions = {
+    allowJs: true,
     strict: true,
     noEmit: true,
     lib: ['lib.esnext.d.ts', 'lib.dom.d.ts'],
@@ -35,7 +68,13 @@ export function getTemplateIdentifierType(
     shouldCreateNewSourceFile,
   ) =>
     requestedFileName === fileName
-      ? ts.createSourceFile(requestedFileName, text, languageVersion, true)
+      ? ts.createSourceFile(
+          requestedFileName,
+          text,
+          languageVersion,
+          true,
+          scriptKind,
+        )
       : getSourceFile(
           requestedFileName,
           languageVersion,

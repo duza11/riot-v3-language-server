@@ -305,6 +305,33 @@ describe('global type virtual code', () => {
     );
   });
 
+  it('generates component-scoped aliases for JSDoc object typedefs', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    /**
+     * @typedef {Object} F
+     * @property {string} path
+     * @property {number} size
+     */
+    /** @type {F} */
+    self.file = {
+      path: 'path/to/memo.txt',
+      size: 1024,
+    }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain(
+      'type RiotV3JSDocTypedef_0_F = { path: string; size: number; };',
+    );
+    expect(globals).toContain('file: RiotV3JSDocTypedef_0_F;');
+  });
+
   it('merges nested component state assignments into object literal types', () => {
     const code = createVirtualCode(`
 <demo-widget>

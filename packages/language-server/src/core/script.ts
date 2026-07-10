@@ -10,6 +10,7 @@ import {
 } from './scanners';
 import type {
   GeneratedSegment,
+  JSDocTypedef,
   ScriptBlock,
   ScriptProperty,
   TextRange,
@@ -64,6 +65,40 @@ export function getScriptThisAliases(
     }
   }
   return aliases;
+}
+
+export function getScriptJSDocTypedefs(
+  snapshot: ts.IScriptSnapshot,
+  scripts: ScriptBlock[],
+): JSDocTypedef[] {
+  const typedefs = new Map<string, JSDocTypedef>();
+  for (const script of scripts) {
+    const text = snapshot.getText(script.start, script.end);
+    for (let offset = 0; offset < text.length; ) {
+      if (text[offset] === '/' && text[offset + 1] === '*') {
+        const commentEnd = scanComment(text, offset);
+        if (text[offset + 2] === '*') {
+          for (const typedef of parseJSDocTypedefs(
+            text.slice(offset, commentEnd),
+          )) {
+            typedefs.set(typedef.name, typedef);
+          }
+        }
+        offset = commentEnd;
+        continue;
+      }
+      if (
+        text[offset] === "'" ||
+        text[offset] === '"' ||
+        text[offset] === '`'
+      ) {
+        offset = scanString(text, offset);
+        continue;
+      }
+      offset++;
+    }
+  }
+  return [...typedefs.values()];
 }
 
 export function scanInstanceProperties(
@@ -1073,6 +1108,32 @@ function getLeadingJSDocType(text: string): string | undefined {
 function parseJSDocType(comment: string): string | undefined {
   const match = comment.match(/@type\s*\{([^}]+)\}/);
   return match?.[1]?.trim();
+}
+
+function parseJSDocTypedefs(comment: string): JSDocTypedef[] {
+  const properties = [
+    ...comment.matchAll(
+      /@property\s*\{([^}]+)\}\s*\[?([A-Za-z_$][\w$]*)(?:=[^\]\s]+)?\]?/g,
+    ),
+  ].map(([, typeName, name]) => ({
+    name,
+    typeName: typeName.trim(),
+  }));
+  const typedefs: JSDocTypedef[] = [];
+  for (const [, baseTypeName, name] of comment.matchAll(
+    /@typedef\s*\{([^}]+)\}\s*([A-Za-z_$][\w$]*)/g,
+  )) {
+    const typeName = baseTypeName.trim();
+    typedefs.push({
+      name,
+      typeName: properties.length
+        ? formatObjectType(properties)
+        : typeName === 'Object'
+          ? 'Record<string, any>'
+          : typeName,
+    });
+  }
+  return typedefs;
 }
 
 function stripLeadingComments(text: string): string {

@@ -15,6 +15,7 @@ import {
 import {
   generateScriptVirtualText,
   getComponentScriptLanguageId,
+  getScriptJSDocTypedefs,
   getScriptProperties,
 } from './script';
 import {
@@ -89,6 +90,7 @@ export class RiotV3VirtualCode implements VirtualCode {
       createRiotV3GlobalTypesVirtualCode(
         componentAnalyses.map(({ component, templateAnalysis }) => ({
           scriptProperties: getScriptProperties(snapshot, component.scripts),
+          jsDocTypedefs: getScriptJSDocTypedefs(snapshot, component.scripts),
           eachDepthCount: templateAnalysis.eachDepthCount,
         })),
         fileTypeScope,
