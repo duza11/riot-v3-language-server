@@ -45,7 +45,7 @@ export function getTemplateText(
 
 export function getInterfaceBody(text: string, name: string): string {
   const match = text.match(
-    new RegExp(`interface ${name}[^}]*{([\\s\\S]*?)\\n}`),
+    new RegExp(`interface ${name}[^}]*{([\\s\\S]*?)\\n\\s*}`),
   );
   if (!match) {
     throw new Error(`Interface "${name}" was not found.`);

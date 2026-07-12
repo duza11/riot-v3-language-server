@@ -46,8 +46,12 @@ describe('RiotV3VirtualCode embedded codes', () => {
     const firstScript = getScriptText(code, 'script_0');
     const secondScript = getScriptText(code, 'script_1');
 
-    expect(firstScript).toContain('@this {RiotV3TagInstance_0}');
-    expect(secondScript).toContain('@this {RiotV3TagInstance_1}');
+    expect(firstScript).toMatch(
+      /@this \{import\('riot-v3:[^']+'\)\.TagInstance_0\}/,
+    );
+    expect(secondScript).toMatch(
+      /@this \{import\('riot-v3:[^']+'\)\.TagInstance_1\}/,
+    );
   });
 
   it('uses component-specific template contexts for multiple Riot v3 components', () => {
@@ -70,8 +74,12 @@ describe('RiotV3VirtualCode embedded codes', () => {
     const firstTemplate = getTemplateText(code, 'template_0');
     const secondTemplate = getTemplateText(code, 'template_1');
 
-    expect(firstTemplate).toContain('this: RiotV3TemplateInstance_0');
-    expect(secondTemplate).toContain('this: RiotV3TemplateInstance_1');
+    expect(firstTemplate).toMatch(
+      /this: import\('riot-v3:[^']+'\)\.TemplateInstance_0/,
+    );
+    expect(secondTemplate).toMatch(
+      /this: import\('riot-v3:[^']+'\)\.TemplateInstance_1/,
+    );
   });
 
   it('keeps style source text in style embedded code', () => {

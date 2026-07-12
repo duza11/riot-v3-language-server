@@ -9,6 +9,8 @@ import {
 import {
   generateRiotV3GlobalTypes,
   getComponentTypeNames,
+  getRiotV3ComponentTypeReference,
+  getRiotV3ComponentTypesModuleName,
   getRiotV3FileTypeScope,
   type RiotV3GlobalTypesComponentData,
 } from './globalTypes';
@@ -71,6 +73,8 @@ export class RiotV3VirtualCode implements VirtualCode {
     const fileTypeScope = fileName
       ? getRiotV3FileTypeScope(fileName)
       : undefined;
+    const componentTypesModuleName =
+      getRiotV3ComponentTypesModuleName(fileTypeScope);
     this.styleNodes = components.flatMap((component) => component.styles);
     this.scriptNodes = components.flatMap((component) => component.scriptNodes);
     const componentAnalyses = components.map((component) => ({
@@ -86,7 +90,11 @@ export class RiotV3VirtualCode implements VirtualCode {
       ),
     }));
     this.embeddedCodes = [
-      ...getRiotV3EmbeddedCodes(snapshot, componentAnalyses, fileTypeScope),
+      ...getRiotV3EmbeddedCodes(
+        snapshot,
+        componentAnalyses,
+        componentTypesModuleName,
+      ),
       createRiotV3GlobalTypesVirtualCode(
         componentAnalyses.map(({ component, templateAnalysis }) => ({
           scriptProperties: getScriptProperties(snapshot, component.scripts),
@@ -153,15 +161,26 @@ function* getRiotV3EmbeddedCodes(
     component: RiotV3Component;
     templateAnalysis: TemplateAnalysis;
   }[],
-  fileTypeScope?: string,
+  componentTypesModuleName: string,
 ): Generator<VirtualCode> {
   let styleIndex = 0;
   let scriptIndex = 0;
   for (const { component, templateAnalysis } of componentAnalyses) {
-    const componentTypeNames = getComponentTypeNames(
-      component.index,
-      fileTypeScope,
-    );
+    const componentTypeNames = getComponentTypeNames(component.index);
+    const componentTypeReferences = {
+      tagInstance: getRiotV3ComponentTypeReference(
+        componentTypesModuleName,
+        componentTypeNames.tagInstance,
+      ),
+      templateInstance: getRiotV3ComponentTypeReference(
+        componentTypesModuleName,
+        componentTypeNames.templateInstance,
+      ),
+      eachContext: getRiotV3ComponentTypeReference(
+        componentTypesModuleName,
+        componentTypeNames.eachContext,
+      ),
+    };
 
     for (const style of component.styles) {
       if (style.startTagEnd !== undefined && style.endTagStart !== undefined) {
@@ -205,7 +224,7 @@ function* getRiotV3EmbeddedCodes(
       const languageId = getComponentScriptLanguageId(component.scripts);
       const prefix = getScriptContextPrefix(
         languageId,
-        componentTypeNames.tagInstance,
+        componentTypeReferences.tagInstance,
       );
       const generated = generateScriptVirtualText(scriptBlocks, prefix);
       yield {
@@ -227,7 +246,7 @@ function* getRiotV3EmbeddedCodes(
           ? 'template'
           : 'template_' + component.index,
         templateAnalysis.expressions,
-        componentTypeNames,
+        componentTypeReferences,
       );
     }
   }
