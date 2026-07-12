@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getTemplateIdentifierType } from './helpers/typescript';
+import {
+  getTemplateIdentifierQuickInfo,
+  getTemplateIdentifierType,
+} from './helpers/typescript';
 import {
   createVirtualCode,
   expectTemplateIdentifierPrefixNotMapped,
@@ -9,6 +12,24 @@ import {
 } from './helpers/virtualCode';
 
 describe('template virtual code', () => {
+  it('shows short component state names in template quick info', () => {
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ message }</p>
+  <script>
+    this.message = 'hello'
+  </script>
+</demo-widget>
+`,
+      '/workspace/demo.tag',
+    );
+
+    expect(
+      getTemplateIdentifierQuickInfo(code, 'void (this.message)', 'message'),
+    ).toBe('(property) ComponentState_0.message: string');
+  });
+
   it('prefixes script this-property references with this', () => {
     const code = createVirtualCode(`
 <demo-widget>
@@ -121,7 +142,9 @@ describe('each template expressions', () => {
 
     const template = getTemplateText(code);
 
-    expect(template).toContain('function(this: RiotV3EachContext_0)');
+    expect(template).toContain(
+      "function(this: import('riot-v3:anonymous').EachContext_0)",
+    );
     expect(template).toContain(
       'const __riot_v3_each_collection_0 = this.items;',
     );
@@ -146,7 +169,9 @@ describe('each template expressions', () => {
 
     const template = getTemplateText(code);
 
-    expect(template).toContain('function(this: RiotV3EachContext_0)');
+    expect(template).toContain(
+      "function(this: import('riot-v3:anonymous').EachContext_0)",
+    );
     expect(template).toContain(
       'const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_0>;',
     );
@@ -434,7 +459,9 @@ void (this.item);`);
     const template = getTemplateText(code);
 
     expect(template).toContain('this.items');
-    expect(template).toContain('function(this: RiotV3EachContext_0)');
+    expect(template).toContain(
+      "function(this: import('riot-v3:anonymous').EachContext_0)",
+    );
     expect(template).toContain('this.name');
     expect(template).toContain('this.title');
     expect(template).toContain('this.parent.title');
@@ -461,8 +488,12 @@ void (this.item);`);
     const template = getTemplateText(code);
 
     expect(template).toContain('this.groups');
-    expect(template).toContain('function(this: RiotV3EachContext_0)');
-    expect(template).toContain('function(this: RiotV3EachContext_0_1)');
+    expect(template).toContain(
+      "function(this: import('riot-v3:anonymous').EachContext_0)",
+    );
+    expect(template).toContain(
+      "function(this: import('riot-v3:anonymous').EachContext_0_1)",
+    );
     expect(template).toContain('group.items');
     expect(template).toContain('group.name');
     expect(template).toContain('item.name');
@@ -538,7 +569,9 @@ describe('class template expressions', () => {
 
     const template = getTemplateText(code);
 
-    expect(template).toContain('function(this: RiotV3EachContext_0)');
+    expect(template).toContain(
+      "function(this: import('riot-v3:anonymous').EachContext_0)",
+    );
     expect(template).toContain('item.active');
     expect(template).toContain('item.name');
     expect(template).toContain('this.selected');

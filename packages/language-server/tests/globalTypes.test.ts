@@ -327,9 +327,9 @@ describe('global type virtual code', () => {
     const globals = getGlobalTypesText(code);
 
     expect(globals).toContain(
-      'type RiotV3JSDocTypedef_0_F = { path: string; size: number; };',
+      'export type JSDocTypedef_0_F = { path: string; size: number; };',
     );
-    expect(globals).toContain('file: RiotV3JSDocTypedef_0_F;');
+    expect(globals).toContain('file: JSDocTypedef_0_F;');
   });
 
   it('merges nested component state assignments into object literal types', () => {
@@ -408,9 +408,9 @@ describe('global type virtual code', () => {
     const globals = getGlobalTypesText(code);
 
     expect(globals).toContain(
-      'interface RiotV3EachContext_0_1 extends RiotV3EachContext, RiotV3TemplateInstance_0',
+      'export interface EachContext_0_1 extends RiotV3EachContext, TemplateInstance_0',
     );
-    expect(globals).toContain('parent: RiotV3EachContext_0;');
+    expect(globals).toContain('parent: EachContext_0;');
   });
 
   it('keeps component state scoped to each Riot v3 component', () => {
@@ -431,8 +431,8 @@ describe('global type virtual code', () => {
 `);
 
     const globals = getGlobalTypesText(code);
-    const firstState = getInterfaceBody(globals, 'RiotV3ComponentState_0');
-    const secondState = getInterfaceBody(globals, 'RiotV3ComponentState_1');
+    const firstState = getInterfaceBody(globals, 'ComponentState_0');
+    const secondState = getInterfaceBody(globals, 'ComponentState_1');
 
     expect(firstState).toContain('message: string;');
     expect(firstState).not.toContain('count:');
@@ -458,16 +458,41 @@ describe('global type virtual code', () => {
     const globals = getGlobalTypesText(code);
 
     expect(globals).toContain(
-      'interface RiotV3TagInstance_0 extends RiotV3TagInstance, RiotV3ComponentState_0 {}',
+      'export interface TagInstance_0 extends RiotV3TagInstance, ComponentState_0 {}',
     );
     expect(globals).toContain(
-      'interface RiotV3TemplateInstance_0 extends RiotV3TemplateInstance, RiotV3ComponentState_0 {}',
+      'export interface TemplateInstance_0 extends RiotV3TemplateInstance, ComponentState_0 {}',
     );
     expect(globals).toContain(
-      'interface RiotV3TagInstance_1 extends RiotV3TagInstance, RiotV3ComponentState_1 {}',
+      'export interface TagInstance_1 extends RiotV3TagInstance, ComponentState_1 {}',
     );
     expect(globals).toContain(
-      'interface RiotV3TemplateInstance_1 extends RiotV3TemplateInstance, RiotV3ComponentState_1 {}',
+      'export interface TemplateInstance_1 extends RiotV3TemplateInstance, ComponentState_1 {}',
+    );
+  });
+
+  it('encapsulates component types in a file-specific module', () => {
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <script>
+    this.message = 'hello'
+  </script>
+</demo-widget>
+`,
+      '/workspace/demo.tag',
+    );
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toMatch(
+      /declare module 'riot-v3:[^']+' \{\n\texport interface ComponentState_0 \{/,
+    );
+    expect(globals).toContain(
+      'export interface TagInstance_0 extends RiotV3TagInstance, ComponentState_0 {}',
+    );
+    expect(globals).toContain(
+      'export interface TemplateInstance_0 extends RiotV3TemplateInstance, ComponentState_0 {}',
     );
   });
 
