@@ -380,6 +380,22 @@ describe('each template expressions', () => {
     expect(type).toBe('string');
   });
 
+  it('resolves template member types from JSDoc intersections', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ item.count }</p>
+  <script>
+    /** @type {{ value: string } & { count: number }} */
+    this.item = { value: 'value', count: 1 }
+  </script>
+</demo-widget>
+`);
+
+    const type = getTemplateIdentifierType(code, 'item.count', 'count');
+
+    expect(type).toBe('number');
+  });
+
   it('allows template object member access from dynamic script assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
