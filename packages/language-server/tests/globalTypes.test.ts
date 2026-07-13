@@ -332,6 +332,36 @@ describe('global type virtual code', () => {
     expect(globals).toContain('file: JSDocTypedef_0_F;');
   });
 
+  it('preserves JSDoc intersection types containing inline objects', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /** @type {{ value: string } & { count: number }} */
+    this.item = { value: 'value', count: 1 }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain('item: { value: string } & { count: number };');
+  });
+
+  it('preserves JSDoc union types containing inline objects', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /** @type {{ value: string } | { count: number }} */
+    this.item = { value: 'value' }
+  </script>
+</demo-widget>
+`);
+
+    const globals = getGlobalTypesText(code);
+
+    expect(globals).toContain('item: { value: string } | { count: number };');
+  });
+
   it('merges nested component state assignments into object literal types', () => {
     const code = createVirtualCode(`
 <demo-widget>

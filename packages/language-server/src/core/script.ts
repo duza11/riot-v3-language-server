@@ -1106,8 +1106,22 @@ function getLeadingJSDocType(text: string): string | undefined {
 }
 
 function parseJSDocType(comment: string): string | undefined {
-  const match = comment.match(/@type\s*\{([^}]+)\}/);
-  return match?.[1]?.trim();
+  const tag = /@type\b/.exec(comment);
+  if (!tag) {
+    return;
+  }
+  let typeStart = tag.index + tag[0].length;
+  while (typeStart < comment.length && /\s/.test(comment[typeStart])) {
+    typeStart++;
+  }
+  if (comment[typeStart] !== '{') {
+    return;
+  }
+  const typeEnd = scanBalanced(comment, typeStart, '{', '}');
+  if (typeEnd === undefined) {
+    return;
+  }
+  return comment.slice(typeStart + 1, typeEnd - 1).trim() || undefined;
 }
 
 function parseJSDocTypedefs(comment: string): JSDocTypedef[] {

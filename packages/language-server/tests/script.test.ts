@@ -67,6 +67,22 @@ describe('script virtual code', () => {
     expect(type).toBe('string');
   });
 
+  it('resolves script member types from JSDoc intersections', () => {
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /** @type {{ value: string } & { count: number }} */
+    this.item = { value: 'value', count: 1 }
+    console.log(this.item.count)
+  </script>
+</demo-widget>
+`);
+
+    const type = getScriptIdentifierType(code, 'this.item.count', 'count');
+
+    expect(type).toBe('number');
+  });
+
   it('converts Riot v3 top-level method syntax', () => {
     const code = createVirtualCode(`
 <demo-widget>
