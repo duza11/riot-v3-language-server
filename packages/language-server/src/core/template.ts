@@ -7,7 +7,7 @@ import {
   isIdentifierStart,
   isInRanges,
   scanBalanced,
-  scanComment,
+  scanJavaScriptNonCode,
   scanString,
   scanTemplateNonIdentifier,
 } from './scanners';
@@ -370,15 +370,9 @@ function findEachInSeparator(
   let braceDepth = 0;
   for (let offset = 0; offset < text.length; ) {
     const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (char === '(') {
@@ -444,11 +438,9 @@ function parseClassShorthandExpressions(
 
 function scanClassShorthandToken(text: string, offset: number): number {
   const char = text[offset];
-  if (char === "'" || char === '"' || char === '`') {
-    return scanString(text, offset);
-  }
-  if (char === '/' && (text[offset + 1] === '/' || text[offset + 1] === '*')) {
-    return scanComment(text, offset);
+  const skipped = scanJavaScriptNonCode(text, offset);
+  if (skipped !== undefined) {
+    return skipped;
   }
   if (char === '(') {
     return scanBalanced(text, offset, '(', ')') ?? text.length;
@@ -1123,15 +1115,9 @@ function findTemplateExpressionEnd(
   let depth = 0;
   for (let offset = start; offset < text.length; ) {
     const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (char === '{') {

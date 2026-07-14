@@ -6,7 +6,7 @@ import {
   scanBalanced,
   scanComment,
   scanIdentifierEnd,
-  scanString,
+  scanJavaScriptNonCode,
 } from './scanners';
 import type {
   GeneratedSegment,
@@ -87,12 +87,9 @@ export function getScriptJSDocTypedefs(
         offset = commentEnd;
         continue;
       }
-      if (
-        text[offset] === "'" ||
-        text[offset] === '"' ||
-        text[offset] === '`'
-      ) {
-        offset = scanString(text, offset);
+      const skipped = scanJavaScriptNonCode(text, offset);
+      if (skipped !== undefined) {
+        offset = skipped;
         continue;
       }
       offset++;
@@ -151,15 +148,9 @@ export function scanRiotV3MethodProperties(
 
   while (offset < text.length) {
     const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (
@@ -308,16 +299,9 @@ function scanThisPropertyAssignments(
 ): ScriptPropertyAssignment[] {
   const properties: ScriptPropertyAssignment[] = [];
   for (let offset = 0; offset < text.length; ) {
-    const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (
@@ -349,16 +333,9 @@ function scanAliasPropertyAssignments(
 ): ScriptPropertyAssignment[] {
   const properties: ScriptPropertyAssignment[] = [];
   for (let offset = 0; offset < text.length; ) {
-    const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (
@@ -421,16 +398,9 @@ function scanOwnerPropertyAssignment(
 function getThisAliases(text: string): string[] {
   const aliases: string[] = [];
   for (let offset = 0; offset < text.length; ) {
-    const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     const alias = scanThisAlias(text, offset);
@@ -1028,15 +998,9 @@ function splitTopLevelCommaSeparated(text: string): string[] {
       break;
     }
     const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (char === '(') {
@@ -1170,8 +1134,9 @@ function stripLeadingComments(text: string): string {
 function findTopLevelPropertyColon(text: string): number | undefined {
   for (let offset = 0; offset < text.length; ) {
     const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (char === '(') {
@@ -1226,15 +1191,9 @@ function findArrowAfterExpressionStart(
 ): number | undefined {
   for (let offset = start; offset < text.length; ) {
     const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (char === '=' && text[offset + 1] === '>') {
@@ -1297,15 +1256,9 @@ function generateScriptSegments(
 
   while (offset < text.length) {
     const char = text[offset];
-    if (char === "'" || char === '"' || char === '`') {
-      offset = scanString(text, offset);
-      continue;
-    }
-    if (
-      char === '/' &&
-      (text[offset + 1] === '/' || text[offset + 1] === '*')
-    ) {
-      offset = scanComment(text, offset);
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
       continue;
     }
     if (

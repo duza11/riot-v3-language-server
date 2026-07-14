@@ -393,6 +393,46 @@ describe('global type virtual code', () => {
     expect(globals).toContain('obj: { hoge: string; fuga: string; };');
   });
 
+  it('collects component state assignments after regular expression literals', () => {
+    // Arrange
+    const code = createVirtualCode(String.raw`
+<demo-widget>
+  <script>
+    const self = this
+    self.obj = { hoge: 1 }
+    const quoted = /\"/
+    self.obj.fuga = 'hello'
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('obj: { hoge: number; fuga: string; };');
+  });
+
+  it('keeps division expressions distinct from regular expression literals', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.obj = { hoge: 1 }
+    const ratio = 10 / 2
+    self.obj.fuga = ratio
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('obj: { hoge: number; fuga: any; };');
+  });
+
   it('merges string literal bracket component state assignments into object literal types', () => {
     const code = createVirtualCode(`
 <demo-widget>
