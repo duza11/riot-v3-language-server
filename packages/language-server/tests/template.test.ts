@@ -138,6 +138,48 @@ describe('template virtual code', () => {
     expect(template).toContain('this.visible');
   });
 
+  it('ignores identifiers in JavaScript block comments inside template expressions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ visible /* hidden */ }</p>
+  <script>
+    this.visible = true
+    this.hidden = false
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const template = getTemplateText(code);
+
+    // Assert
+    expect(template).toContain('this.visible');
+    expect(template).not.toContain('this.hidden');
+  });
+
+  it('ignores identifiers in JavaScript line comments inside template expressions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{
+    visible // hidden
+  }</p>
+  <script>
+    this.visible = true
+    this.hidden = false
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const template = getTemplateText(code);
+
+    // Assert
+    expect(template).toContain('this.visible');
+    expect(template).not.toContain('this.hidden');
+  });
+
   it('maps empty template expressions to this-member completion context', () => {
     const code = createVirtualCode(`
 <demo-widget>
