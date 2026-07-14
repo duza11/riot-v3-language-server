@@ -7,27 +7,45 @@ import type {
 } from './types';
 
 export function getRiotV3Components(
-  documentLength: number,
+  sourceText: string,
   htmlDocument: html.HTMLDocument,
 ): RiotV3Component[] {
+  const documentLength = sourceText.length;
+  const htmlComments = getRiotV3HtmlCommentRanges(sourceText);
   const componentRoots = htmlDocument.roots.filter(
     (node) =>
       node.tag !== undefined && node.tag !== 'style' && node.tag !== 'script',
   );
   const roots = componentRoots.length ? componentRoots : htmlDocument.roots;
   return roots.map((root, index) => {
+    const componentEnd = root.end || documentLength;
     const nodes = [...forEachHtmlNode([root])];
     const scriptNodes = nodes.filter((node) => node.tag === 'script');
     const styles = nodes.filter((node) => node.tag === 'style');
+    const componentHtmlComments = htmlComments
+      .filter(
+        (comment) => comment.end > root.start && comment.start < componentEnd,
+      )
+      .map((comment) => ({
+        start: Math.max(comment.start, root.start),
+        end: Math.min(comment.end, componentEnd),
+      }));
     return {
       index,
       start: root.start,
-      end: root.end || documentLength,
+      end: componentEnd,
       root,
       nodes,
       styles,
       scriptNodes,
-      scripts: getScriptBlocks(root, scriptNodes, styles, documentLength),
+      htmlComments: componentHtmlComments,
+      scripts: getScriptBlocks(
+        root,
+        scriptNodes,
+        styles,
+        componentHtmlComments,
+        documentLength,
+      ),
     };
   });
 }
@@ -48,6 +66,7 @@ export function getTemplateIgnoredRanges(
         start: node.start,
         end: node.end,
       })),
+    ...component.htmlComments,
     ...component.scripts,
   ]
     .filter((range) => range.end > range.start)
@@ -80,32 +99,63 @@ function getScriptBlocks(
   root: html.Node,
   scriptNodes: html.Node[],
   styleNodes: html.Node[],
+  htmlComments: TextRange[],
   documentLength: number,
 ): ScriptBlock[] {
   const blocks: ScriptBlock[] = [];
   for (const script of scriptNodes) {
     if (script.startTagEnd !== undefined && script.endTagStart !== undefined) {
-      blocks.push({
-        start: script.startTagEnd,
-        end: script.endTagStart,
-        languageId: getScriptLanguageId(script),
-      });
+      const languageId = getScriptLanguageId(script);
+      blocks.push(
+        ...excludeTextRanges(
+          { start: script.startTagEnd, end: script.endTagStart },
+          htmlComments,
+        ).map((range) => ({ ...range, languageId })),
+      );
     }
   }
 
   blocks.push(
     ...getOpenSyntaxBlocks(
       root,
-      [...scriptNodes, ...styleNodes],
+      [
+        ...scriptNodes.map(({ start, end }) => ({ start, end })),
+        ...styleNodes.map(({ start, end }) => ({ start, end })),
+        ...htmlComments,
+      ],
       documentLength,
     ),
   );
   return blocks;
 }
 
+function excludeTextRanges(
+  range: TextRange,
+  excludedRanges: TextRange[],
+): TextRange[] {
+  const includedRanges: TextRange[] = [];
+  let cursor = range.start;
+  for (const excluded of excludedRanges) {
+    if (excluded.end <= cursor || excluded.start >= range.end) {
+      continue;
+    }
+    if (cursor < excluded.start) {
+      includedRanges.push({
+        start: cursor,
+        end: Math.min(excluded.start, range.end),
+      });
+    }
+    cursor = Math.max(cursor, excluded.end);
+  }
+  if (cursor < range.end) {
+    includedRanges.push({ start: cursor, end: range.end });
+  }
+  return includedRanges;
+}
+
 function getOpenSyntaxBlocks(
   root: html.Node,
-  excludedNodes: html.Node[],
+  excludedRanges: TextRange[],
   documentLength: number,
 ): ScriptBlock[] {
   if (root.startTagEnd === undefined) {
@@ -127,19 +177,19 @@ function getOpenSyntaxBlocks(
     return [];
   }
   const blocks: ScriptBlock[] = [];
-  const excludedRanges = excludedNodes
-    .filter((node) => node.end > lastHtmlEnd && node.start < rootEnd)
+  const ranges = excludedRanges
+    .filter((range) => range.end > lastHtmlEnd && range.start < rootEnd)
     .sort((a, b) => a.start - b.start);
   let cursor = lastHtmlEnd;
-  for (const node of excludedRanges) {
-    if (cursor < node.start) {
+  for (const range of ranges) {
+    if (cursor < range.start) {
       blocks.push({
         start: cursor,
-        end: Math.min(node.start, rootEnd),
+        end: Math.min(range.start, rootEnd),
         languageId: 'javascript',
       });
     }
-    cursor = Math.max(cursor, node.end);
+    cursor = Math.max(cursor, range.end);
   }
   if (cursor < rootEnd) {
     blocks.push({
@@ -149,6 +199,55 @@ function getOpenSyntaxBlocks(
     });
   }
   return blocks;
+}
+
+export function getRiotV3HtmlCommentRanges(sourceText: string): TextRange[] {
+  const ranges: TextRange[] = [];
+  for (let offset = 0; offset < sourceText.length; ) {
+    const char = sourceText[offset];
+    if (char === "'" || char === '"') {
+      const stringEnd = scanQuotedLineString(sourceText, offset);
+      if (stringEnd !== undefined) {
+        offset = stringEnd;
+        continue;
+      }
+    }
+    if (
+      sourceText.startsWith('<!--', offset) &&
+      sourceText[offset + 4] !== '>'
+    ) {
+      const commentEnd = sourceText.indexOf('-->', offset + 4);
+      if (commentEnd === -1) {
+        ranges.push({ start: offset, end: sourceText.length });
+        break;
+      }
+      ranges.push({ start: offset, end: commentEnd + '-->'.length });
+      offset = commentEnd + '-->'.length;
+      continue;
+    }
+    offset++;
+  }
+  return ranges;
+}
+
+function scanQuotedLineString(
+  sourceText: string,
+  start: number,
+): number | undefined {
+  const quote = sourceText[start];
+  for (let offset = start + 1; offset < sourceText.length; offset++) {
+    const char = sourceText[offset];
+    if (char === '\\') {
+      offset++;
+      continue;
+    }
+    if (char === '\n' || char === '\r') {
+      return;
+    }
+    if (char === quote) {
+      return offset + 1;
+    }
+  }
 }
 
 function isRiotV3HtmlTagName(tag: string | undefined): boolean {

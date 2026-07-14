@@ -96,6 +96,95 @@ describe('RiotV3VirtualCode embedded codes', () => {
     expect(style).toContain('p { color: red; }');
   });
 
+  it('keeps CSS block comments out of template expressions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <style>
+    /* .hidden { color: { hidden }; } */
+    .visible { color: red; }
+  </style>
+  <p>{ visible }</p>
+</demo-widget>
+`);
+
+    // Act
+    const style = getEmbeddedText(code, 'style_0');
+    const template = getTemplateText(code);
+
+    // Assert
+    expect(style).toContain('/* .hidden { color: { hidden }; } */');
+    expect(template).toContain('this.visible');
+    expect(template).not.toContain('this.hidden');
+  });
+
+  it('keeps SCSS line comments out of template expressions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <style lang="scss">
+    // .hidden { color: { hidden }; }
+    .visible { color: red; }
+  </style>
+  <p>{ visible }</p>
+</demo-widget>
+`);
+
+    // Act
+    const style = getEmbeddedCode(code, 'style_0');
+    const styleText = style.snapshot.getText(0, style.snapshot.getLength());
+    const template = getTemplateText(code);
+
+    // Assert
+    expect(style.languageId).toBe('scss');
+    expect(styleText).toContain('// .hidden { color: { hidden }; }');
+    expect(template).toContain('this.visible');
+    expect(template).not.toContain('this.hidden');
+  });
+
+  it('keeps Less line comments out of template expressions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <style lang="less">
+    // .hidden { color: { hidden }; }
+    .visible { color: red; }
+  </style>
+  <p>{ visible }</p>
+</demo-widget>
+`);
+
+    // Act
+    const style = getEmbeddedCode(code, 'style_0');
+    const styleText = style.snapshot.getText(0, style.snapshot.getLength());
+    const template = getTemplateText(code);
+
+    // Assert
+    expect(style.languageId).toBe('less');
+    expect(styleText).toContain('// .hidden { color: { hidden }; }');
+    expect(template).toContain('this.visible');
+    expect(template).not.toContain('this.hidden');
+  });
+
+  it('excludes HTML comments from style embedded code', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <style>
+    <!-- .hidden { color: red; } -->
+    .visible::before { content: '<!-- keep -->'; }
+  </style>
+</demo-widget>
+`);
+
+    // Act
+    const style = getEmbeddedText(code, 'style_0');
+
+    // Assert
+    expect(style).toContain(".visible::before { content: '<!-- keep -->'; }");
+    expect(style).not.toContain('.hidden');
+  });
+
   it('keeps global type property mappings out of semantic features', () => {
     const code = createVirtualCode(`
 <demo-widget>

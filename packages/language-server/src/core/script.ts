@@ -3,6 +3,7 @@ import type * as ts from 'typescript';
 import {
   isIdentifierPart,
   isIdentifierStart,
+  isInRanges,
   scanBalanced,
   scanComment,
   scanIdentifierEnd,
@@ -1211,12 +1212,17 @@ function splitScriptImports(text: string): {
   bodyRanges: TextRange[];
 } {
   const imports: TextRange[] = [];
+  const nonCodeRanges = getJavaScriptNonCodeRanges(text);
   riotV3ImportStatement.lastIndex = 0;
   for (
     let match = riotV3ImportStatement.exec(text);
     match;
     match = riotV3ImportStatement.exec(text)
   ) {
+    const importOffset = match.index + match[0].indexOf('import');
+    if (isInRanges(importOffset, nonCodeRanges)) {
+      continue;
+    }
     imports.push({
       start: match.index,
       end: match.index + match[0].length,
@@ -1241,6 +1247,20 @@ function splitScriptImports(text: string): {
     bodyRanges.push({ start: cursor, end: text.length });
   }
   return { imports, bodyRanges };
+}
+
+function getJavaScriptNonCodeRanges(text: string): TextRange[] {
+  const ranges: TextRange[] = [];
+  for (let offset = 0; offset < text.length; ) {
+    const end = scanJavaScriptNonCode(text, offset);
+    if (end !== undefined) {
+      ranges.push({ start: offset, end });
+      offset = end;
+      continue;
+    }
+    offset++;
+  }
+  return ranges;
 }
 
 function generateScriptSegments(

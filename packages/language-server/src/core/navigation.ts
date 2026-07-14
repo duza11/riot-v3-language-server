@@ -203,7 +203,7 @@ function getNavigationContext(
   const htmlDocument = htmlLs.parseHTMLDocument(
     html.TextDocument.create('', 'html', 0, sourceText),
   );
-  const components = getRiotV3Components(sourceText.length, htmlDocument);
+  const components = getRiotV3Components(sourceText, htmlDocument);
   const component = getComponentAtOffset(components, position);
   if (!component) {
     return;

@@ -67,7 +67,7 @@ export class RiotV3VirtualCode implements VirtualCode {
       ),
     );
     const components = getRiotV3Components(
-      snapshot.getLength(),
+      snapshot.getText(0, snapshot.getLength()),
       this.htmlDocument,
     );
     const fileTypeScope = fileName
@@ -184,9 +184,10 @@ function* getRiotV3EmbeddedCodes(
 
     for (const style of component.styles) {
       if (style.startTagEnd !== undefined && style.endTagStart !== undefined) {
-        const styleText = snapshot.getText(
+        const styleText = maskSourceRanges(
+          snapshot.getText(style.startTagEnd, style.endTagStart),
           style.startTagEnd,
-          style.endTagStart,
+          component.htmlComments,
         );
         yield {
           id: 'style_' + styleIndex++,
@@ -250,6 +251,26 @@ function* getRiotV3EmbeddedCodes(
       );
     }
   }
+}
+
+function maskSourceRanges(
+  text: string,
+  sourceOffset: number,
+  ranges: { start: number; end: number }[],
+): string {
+  let masked = text;
+  for (const range of ranges) {
+    const start = Math.max(0, range.start - sourceOffset);
+    const end = Math.min(text.length, range.end - sourceOffset);
+    if (start >= end) {
+      continue;
+    }
+    masked =
+      masked.slice(0, start) +
+      masked.slice(start, end).replace(/[^\r\n]/g, ' ') +
+      masked.slice(end);
+  }
+  return masked;
 }
 
 function getScriptContextPrefix(

@@ -123,6 +123,58 @@ describe('script virtual code', () => {
     expect(script).toContain("import('./lazy').then(this.update)");
   });
 
+  it('does not hoist static imports from JavaScript comments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /*
+      import hidden from './hidden'
+    */
+    import visible from './visible'
+    this.message = visible
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const script = getScriptText(code);
+    const contextStart = script.indexOf('function __riot_v3_script_context');
+
+    // Assert
+    expect(script.indexOf("import visible from './visible'")).toBeLessThan(
+      contextStart,
+    );
+    expect(script.indexOf("import hidden from './hidden'")).toBeGreaterThan(
+      contextStart,
+    );
+  });
+
+  it('does not hoist static imports from JavaScript line comments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    // import hidden from './hidden'
+    import visible from './visible'
+    this.message = visible
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const script = getScriptText(code);
+    const contextStart = script.indexOf('function __riot_v3_script_context');
+
+    // Assert
+    expect(script.indexOf("import visible from './visible'")).toBeLessThan(
+      contextStart,
+    );
+    expect(script.indexOf("import hidden from './hidden'")).toBeGreaterThan(
+      contextStart,
+    );
+  });
+
   it('keeps static imports from multiple script sources before the script context', () => {
     const code = createVirtualCode(`
 <demo-widget>
@@ -255,6 +307,49 @@ describe('script virtual code', () => {
     const script = getScriptText(code);
 
     expect(script).toContain("this.message = 'hello'");
+  });
+
+  it('does not include HTML comments in Riot v3 open syntax', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ message }</p>
+  <!-- this.hidden = true -->
+  <script>
+    this.message = 'hello'
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const script = getScriptText(code);
+
+    // Assert
+    expect(script).toContain("this.message = 'hello'");
+    expect(script).not.toContain('this.hidden');
+  });
+
+  it('excludes HTML comments from script embedded code', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    <!--
+      this.hidden = true
+    -->
+    this.visible = true
+    const marker = '<!-- keep -->'
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const script = getScriptText(code);
+
+    // Assert
+    expect(script).toContain('this.visible = true');
+    expect(script).toContain("const marker = '<!-- keep -->'");
+    expect(script).not.toContain('this.hidden');
   });
 
   it('keeps Riot v3 open syntax method bodies out of template expressions', () => {

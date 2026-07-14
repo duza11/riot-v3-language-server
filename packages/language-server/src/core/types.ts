@@ -61,5 +61,6 @@ export interface RiotV3Component {
   nodes: html.Node[];
   styles: html.Node[];
   scriptNodes: html.Node[];
+  htmlComments: TextRange[];
   scripts: ScriptBlock[];
 }
