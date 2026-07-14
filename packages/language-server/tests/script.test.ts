@@ -257,6 +257,49 @@ describe('script virtual code', () => {
     expect(script).toContain("this.message = 'hello'");
   });
 
+  it('does not include HTML comments in Riot v3 open syntax', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ message }</p>
+  <!-- this.hidden = true -->
+  <script>
+    this.message = 'hello'
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const script = getScriptText(code);
+
+    // Assert
+    expect(script).toContain("this.message = 'hello'");
+    expect(script).not.toContain('this.hidden');
+  });
+
+  it('excludes HTML comments from script embedded code', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    <!--
+      this.hidden = true
+    -->
+    this.visible = true
+    const marker = '<!-- keep -->'
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const script = getScriptText(code);
+
+    // Assert
+    expect(script).toContain('this.visible = true');
+    expect(script).toContain("const marker = '<!-- keep -->'");
+    expect(script).not.toContain('this.hidden');
+  });
+
   it('keeps Riot v3 open syntax method bodies out of template expressions', () => {
     const code = createVirtualCode(`
 <demo-widget>

@@ -96,6 +96,25 @@ describe('RiotV3VirtualCode embedded codes', () => {
     expect(style).toContain('p { color: red; }');
   });
 
+  it('excludes HTML comments from style embedded code', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <style>
+    <!-- .hidden { color: red; } -->
+    .visible::before { content: '<!-- keep -->'; }
+  </style>
+</demo-widget>
+`);
+
+    // Act
+    const style = getEmbeddedText(code, 'style_0');
+
+    // Assert
+    expect(style).toContain(".visible::before { content: '<!-- keep -->'; }");
+    expect(style).not.toContain('.hidden');
+  });
+
   it('keeps global type property mappings out of semantic features', () => {
     const code = createVirtualCode(`
 <demo-widget>

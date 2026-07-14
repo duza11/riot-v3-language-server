@@ -79,6 +79,65 @@ describe('template virtual code', () => {
     expect(template).toContain('this.sum');
   });
 
+  it('ignores template expressions inside HTML comments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <div>
+    <p>{ visible }</p>
+    <!-- <p>{ hidden }</p> -->
+  </div>
+  <script>
+    this.visible = true
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const template = getTemplateText(code);
+
+    // Assert
+    expect(template).toContain('this.visible');
+    expect(template).not.toContain('this.hidden');
+  });
+
+  it('ignores template expressions inside unclosed HTML comments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ visible }</p>
+  <!-- <p>{ hidden }</p>
+</demo-widget>
+`);
+
+    // Act
+    const template = getTemplateText(code);
+
+    // Assert
+    expect(template).toContain('this.visible');
+    expect(template).not.toContain('this.hidden');
+  });
+
+  it('keeps template expressions inside quoted HTML comment markers', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p title="<!-- { marker } -->">{ visible }</p>
+  <script>
+    this.marker = 'marker'
+    this.visible = true
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const template = getTemplateText(code);
+
+    // Assert
+    expect(template).toContain('this.marker');
+    expect(template).toContain('this.visible');
+  });
+
   it('maps empty template expressions to this-member completion context', () => {
     const code = createVirtualCode(`
 <demo-widget>
