@@ -150,6 +150,31 @@ describe('script virtual code', () => {
     );
   });
 
+  it('does not hoist static imports from JavaScript line comments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    // import hidden from './hidden'
+    import visible from './visible'
+    this.message = visible
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const script = getScriptText(code);
+    const contextStart = script.indexOf('function __riot_v3_script_context');
+
+    // Assert
+    expect(script.indexOf("import visible from './visible'")).toBeLessThan(
+      contextStart,
+    );
+    expect(script.indexOf("import hidden from './hidden'")).toBeGreaterThan(
+      contextStart,
+    );
+  });
+
   it('keeps static imports from multiple script sources before the script context', () => {
     const code = createVirtualCode(`
 <demo-widget>

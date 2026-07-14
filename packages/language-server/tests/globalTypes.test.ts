@@ -7,6 +7,50 @@ import {
 } from './helpers/virtualCode';
 
 describe('global type virtual code', () => {
+  it('does not infer component state from JavaScript line comments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.visible = true
+    // this.hidden = true
+    // hiddenMethod() {}
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('visible: boolean;');
+    expect(globals).not.toContain('hidden:');
+    expect(globals).not.toContain('hiddenMethod:');
+  });
+
+  it('does not infer component state from JavaScript block comments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.visible = true
+    /*
+      this.hidden = true
+      hiddenMethod() {}
+    */
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('visible: boolean;');
+    expect(globals).not.toContain('hidden:');
+    expect(globals).not.toContain('hiddenMethod:');
+  });
+
   it('infers component state from script this-property assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
