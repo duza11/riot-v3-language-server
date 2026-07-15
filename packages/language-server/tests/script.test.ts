@@ -102,6 +102,28 @@ describe('script virtual code', () => {
     expect(type).toBe('string | number');
   });
 
+  it('resolves unions from repeated assignments in later script references', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.message = null
+    if (this.opts.flag === true) {
+      self.message = 'Hello'
+    }
+    console.log(self.message)
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const type = getScriptIdentifierType(code, 'self.message)', 'message');
+
+    // Assert
+    expect(type).toBe('string | null');
+  });
+
   it('converts Riot v3 top-level method syntax', () => {
     const code = createVirtualCode(`
 <demo-widget>

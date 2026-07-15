@@ -799,18 +799,20 @@ function mergeScriptProperty(
   if (existing.typeOrigin === 'explicit') {
     return existing;
   }
-  if (next.typeOrigin === 'explicit') {
+  if (next.typeOrigin === 'explicit' && next.assignmentKind === 'replacement') {
     return next;
-  }
-  const typeName = mergePropertyTypes(existing.typeName, next.typeName);
-  if (typeName !== undefined) {
-    return { ...existing, typeName, unionTypeNames: undefined };
   }
   if (existing.typeName === 'any') {
     return next;
   }
   if (next.typeName === 'any' || existing.typeName === next.typeName) {
     return existing;
+  }
+  if (next.assignmentKind === 'augmentation') {
+    const typeName = mergePropertyTypes(existing.typeName, next.typeName);
+    return typeName !== undefined
+      ? { ...existing, typeName, unionTypeNames: undefined }
+      : existing;
   }
   const unionTypeNames = [
     ...(existing.unionTypeNames ?? [existing.typeName]),
