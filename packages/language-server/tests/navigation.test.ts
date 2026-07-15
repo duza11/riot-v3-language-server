@@ -13,6 +13,78 @@ import {
 } from './helpers/virtualCode';
 
 describe('rename edits', () => {
+  it('renames a nested object property across script and template references', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ user.name }</p>
+  <script>
+    const self = this
+    self.user = { name: 'Alice' }
+    console.log(self.user.name)
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, "{ name: 'Alice' }", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, 'self.user.name', 'name'),
+      offsetOf(source, '{ user.name }', 'name'),
+    ]);
+    expectAllNewText(edits, 'displayName');
+  });
+
+  it('renames a nested object property from its template reference', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ user.name }</p>
+  <script>
+    this.user = { name: 'Alice' }
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ user.name }', 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ user.name }', 'name'),
+    ]);
+  });
+
+  it('does not rename same-named properties on unrelated component state', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ user.name }</p>
+  <p>{ product.name }</p>
+  <script>
+    this.user = { name: 'Alice' }
+    this.product = { name: 'Keyboard' }
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, "{ name: 'Alice' }", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ user.name }', 'name'),
+    ]);
+  });
+
   it('renames a script method and its template reference from the script side', () => {
     const source = `
 <demo-widget>
@@ -230,6 +302,31 @@ describe('rename edits', () => {
 });
 
 describe('reference ranges', () => {
+  it('finds nested object property references across script and templates', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ user.name }</p>
+  <script>
+    const self = this
+    self.user = { name: 'Alice' }
+    console.log(self.user.name)
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, 'self.user.name', 'name');
+
+    // Act
+    const references = getRiotV3ReferenceRanges(source, position);
+
+    // Assert
+    expect(startsOf(references)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, 'self.user.name', 'name'),
+      offsetOf(source, '{ user.name }', 'name'),
+    ]);
+  });
+
   it('finds references between script this-alias function assignments and template references from the script side', () => {
     const source = `
 <demo-widget>
