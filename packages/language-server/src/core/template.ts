@@ -31,6 +31,9 @@ export interface EachScope {
   start: number;
   end: number;
   sourceOffset: number;
+  collectionOffset: number;
+  collectionText: string;
+  collectionLocalNames: string[];
   depth: number;
   localNames: EachLocalName[];
 }
@@ -213,6 +216,9 @@ function getEachScopes(
       start: node.start,
       end: node.end,
       sourceOffset: eachAttribute.sourceOffset,
+      collectionOffset: eachExpression.collectionOffset,
+      collectionText: eachExpression.collectionText,
+      collectionLocalNames,
       depth: getContainingEachScopes(node.start, scopes).length,
       localNames: eachExpression.localNames.map((localName) => ({
         ...localName,

@@ -13,6 +13,104 @@ import {
 } from './helpers/virtualCode';
 
 describe('rename edits', () => {
+  it('renames array element properties across script and each references', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p each={ item in items }>{ item.name }</p>
+  <script>
+    const self = this
+    self.items = [{ name: 'Alice' }]
+    console.log(self.items[0].name)
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, 'self.items[0].name', 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, 'self.items[0].name', 'name'),
+      offsetOf(source, '{ item.name }', 'name'),
+    ]);
+  });
+
+  it('renames properties referenced from nested each scopes', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <section each={ group in groups }>
+    <p each={ item in group.items }>{ item.name }</p>
+  </section>
+  <script>
+    this.groups = [{ items: [{ name: 'Alice' }] }]
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, "{ name: 'Alice' }", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ item.name }', 'name'),
+    ]);
+  });
+
+  it('renames properties referenced from shorthand each scopes', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p each={ items }>{ name }</p>
+  <script>
+    this.items = [{ name: 'Alice' }]
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, "{ name: 'Alice' }", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ name }', 'name'),
+    ]);
+  });
+
+  it('renames JSDoc array element properties from each references', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p each={ item in items }>{ item.name }</p>
+  <script>
+    /**
+     * @typedef {Object} Item
+     * @property {string} name
+     */
+    /** @type {Item[]} */
+    this.items = this.opts.items
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ item.name }', 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, '@property {string} name', 'name'),
+      offsetOf(source, '{ item.name }', 'name'),
+    ]);
+  });
+
   it('renames a JSDoc typedef property across script and template references', () => {
     // Arrange
     const source = `

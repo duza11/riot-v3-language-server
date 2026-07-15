@@ -1,7 +1,10 @@
 import * as ts from 'typescript';
 import { getScriptProperties, getScriptThisAliases } from './script';
 import type { TemplateAnalysis, TemplateExpression } from './template';
-import { shouldPrefixTemplateIdentifier } from './template';
+import {
+  getResolvedEachLocalName,
+  shouldPrefixTemplateIdentifier,
+} from './template';
 import type { RiotV3Component, ScriptBlock } from './types';
 
 export interface NestedPropertyOccurrence {
@@ -44,7 +47,12 @@ export function getNestedPropertyOccurrences(
   );
   const templateOccurrences = templateAnalysis.expressions.flatMap(
     (expression) =>
-      getTemplateOccurrences(expression, rootNames, typedefNavigation.symbols),
+      getTemplateOccurrences(
+        expression,
+        rootNames,
+        typedefNavigation.symbols,
+        templateAnalysis.eachScopes,
+      ),
   );
 
   return [
@@ -94,25 +102,29 @@ function getScriptOccurrences(
     }
     if (ts.isElementAccessExpression(expression)) {
       const parent = resolvePath(expression.expression);
-      const name = getStaticElementName(
+      const part = getElementPathPart(
         expression.argumentExpression,
         sourceFile,
         script.start,
       );
-      if (!parent || !name) {
+      if (!parent || !part) {
         return;
       }
-      const path = [...parent.path, name.text];
+      const path = [...parent.path, part.text];
       return {
         path,
         segments: [
           ...parent.segments,
-          {
-            path,
-            start: name.start,
-            end: name.end,
-            isDeclaration: false,
-          },
+          ...(part.start === undefined
+            ? []
+            : [
+                {
+                  path,
+                  start: part.start,
+                  end: part.end ?? part.start,
+                  isDeclaration: false,
+                },
+              ]),
         ],
       };
     }
@@ -155,6 +167,14 @@ function getScriptOccurrences(
     parentPath: string[],
   ): void => {
     const expression = unwrapExpression(node);
+    if (ts.isArrayLiteralExpression(expression)) {
+      for (const element of expression.elements) {
+        if (!ts.isSpreadElement(element)) {
+          addObjectDeclarations(element, [...parentPath, '[]']);
+        }
+      }
+      return;
+    }
     if (!ts.isObjectLiteralExpression(expression)) {
       return;
     }
@@ -211,6 +231,7 @@ function getTemplateOccurrences(
   expression: TemplateExpression,
   rootNames: Set<string>,
   symbols: Map<string, string>,
+  eachScopes: TemplateAnalysis['eachScopes'],
 ): NestedPropertyOccurrence[] {
   const prefix = '(';
   const sourceFile = ts.createSourceFile(
@@ -229,6 +250,59 @@ function getTemplateOccurrences(
     }
     if (ts.isIdentifier(current)) {
       const localStart = current.getStart(sourceFile) - prefix.length;
+      const localName = getResolvedEachLocalName(
+        expression,
+        localStart,
+        current.text,
+      );
+      if (localName) {
+        const collectionPath = resolveEachCollectionPath(
+          localName,
+          expression.localDefinitions,
+          rootNames,
+        );
+        return collectionPath
+          ? { path: [...collectionPath, '[]'], segments: [] }
+          : undefined;
+      }
+      const shorthandScope = [...eachScopes]
+        .filter(
+          (scope) =>
+            scope.localNames.length === 0 &&
+            expression.sourceOffset !== scope.collectionOffset &&
+            expression.sourceOffset >= scope.start &&
+            expression.sourceOffset < scope.end,
+        )
+        .sort((a, b) => b.depth - a.depth)[0];
+      if (shorthandScope) {
+        const collectionPath = resolveEachCollectionPath(
+          {
+            name: '',
+            sourceOffset: shorthandScope.sourceOffset,
+            kind: 'item',
+            collectionOffset: shorthandScope.collectionOffset,
+            collectionText: shorthandScope.collectionText,
+            collectionLocalNames: shorthandScope.collectionLocalNames,
+          },
+          expression.localDefinitions,
+          rootNames,
+        );
+        if (collectionPath) {
+          const path = [...collectionPath, '[]', current.text];
+          const start = expression.sourceOffset + localStart;
+          return {
+            path,
+            segments: [
+              {
+                path,
+                start,
+                end: start + current.text.length,
+                isDeclaration: false,
+              },
+            ],
+          };
+        }
+      }
       if (
         !rootNames.has(current.text) ||
         !shouldPrefixTemplateIdentifier(
@@ -246,25 +320,29 @@ function getTemplateOccurrences(
     }
     if (ts.isElementAccessExpression(current)) {
       const parent = resolvePath(current.expression);
-      const name = getStaticElementName(
+      const part = getElementPathPart(
         current.argumentExpression,
         sourceFile,
         expression.sourceOffset - prefix.length,
       );
-      if (!parent || !name) {
+      if (!parent || !part) {
         return;
       }
-      const path = [...parent.path, name.text];
+      const path = [...parent.path, part.text];
       return {
         path,
         segments: [
           ...parent.segments,
-          {
-            path,
-            start: name.start,
-            end: name.end,
-            isDeclaration: false,
-          },
+          ...(part.start === undefined
+            ? []
+            : [
+                {
+                  path,
+                  start: part.start,
+                  end: part.end ?? part.start,
+                  isDeclaration: false,
+                },
+              ]),
         ],
       };
     }
@@ -297,7 +375,8 @@ function getTemplateOccurrences(
   const visit = (node: ts.Node): void => {
     if (
       ts.isPropertyAccessExpression(node) ||
-      ts.isElementAccessExpression(node)
+      ts.isElementAccessExpression(node) ||
+      ts.isIdentifier(node)
     ) {
       const resolved = resolvePath(node);
       for (const segment of resolved?.segments ?? []) {
@@ -375,26 +454,29 @@ function getTypedefNavigation(
     visited: Set<string>,
   ): void => {
     for (const definition of definitions.values()) {
-      if (!containsTypeName(typeName, definition.name)) {
-        continue;
-      }
-      const visitKey = `${rootPath.join('.')}:${definition.name}`;
-      if (visited.has(visitKey)) {
-        continue;
-      }
-      const nextVisited = new Set(visited).add(visitKey);
-      for (const property of definition.properties) {
-        const path = [...rootPath, property.name];
-        const symbolKey = `typedef:${definition.name}.${property.name}`;
-        symbols.set(path.join('.'), symbolKey);
-        declarations.set(symbolKey, {
-          path,
-          symbolKey,
-          start: property.start,
-          end: property.end,
-          isDeclaration: true,
-        });
-        addTypeProperties(path, property.typeName, nextVisited);
+      for (const containerPath of getTypeContainerPaths(
+        typeName,
+        definition.name,
+      )) {
+        const ownerPath = [...rootPath, ...containerPath];
+        const visitKey = `${ownerPath.join('.')}:${definition.name}`;
+        if (visited.has(visitKey)) {
+          continue;
+        }
+        const nextVisited = new Set(visited).add(visitKey);
+        for (const property of definition.properties) {
+          const path = [...ownerPath, property.name];
+          const symbolKey = `typedef:${definition.name}.${property.name}`;
+          symbols.set(path.join('.'), symbolKey);
+          declarations.set(symbolKey, {
+            path,
+            symbolKey,
+            start: property.start,
+            end: property.end,
+            isDeclaration: true,
+          });
+          addTypeProperties(path, property.typeName, nextVisited);
+        }
       }
     }
   };
@@ -405,21 +487,113 @@ function getTypedefNavigation(
   return { declarations: [...declarations.values()], symbols };
 }
 
-function containsTypeName(typeName: string, expected: string): boolean {
-  return new RegExp(
-    `(^|[^A-Za-z0-9_$])${escapeRegExp(expected)}($|[^A-Za-z0-9_$])`,
-  ).test(typeName);
+function getTypeContainerPaths(typeName: string, expected: string): string[][] {
+  const sourceFile = ts.createSourceFile(
+    'property-type.ts',
+    `type PropertyType = ${typeName};`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const declaration = sourceFile.statements.find(ts.isTypeAliasDeclaration);
+  if (!declaration) {
+    return [];
+  }
+  const paths: string[][] = [];
+  const visit = (node: ts.TypeNode, path: string[]): void => {
+    if (ts.isParenthesizedTypeNode(node)) {
+      visit(node.type, path);
+      return;
+    }
+    if (ts.isArrayTypeNode(node)) {
+      visit(node.elementType, [...path, '[]']);
+      return;
+    }
+    if (
+      ts.isTypeReferenceNode(node) &&
+      ts.isIdentifier(node.typeName) &&
+      node.typeName.text === 'Array' &&
+      node.typeArguments?.length === 1
+    ) {
+      visit(node.typeArguments[0], [...path, '[]']);
+      return;
+    }
+    if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node)) {
+      for (const type of node.types) {
+        visit(type, path);
+      }
+      return;
+    }
+    if (
+      ts.isTypeReferenceNode(node) &&
+      ts.isIdentifier(node.typeName) &&
+      node.typeName.text === expected
+    ) {
+      paths.push(path);
+    }
+  };
+  visit(declaration.type, []);
+  return paths;
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function resolveEachCollectionPath(
+  localName: TemplateExpression['localDefinitions'][number],
+  definitions: TemplateExpression['localDefinitions'],
+  rootNames: Set<string>,
+): string[] | undefined {
+  const sourceFile = ts.createSourceFile(
+    'each-collection.js',
+    `(${localName.collectionText})`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const resolve = (node: ts.Expression): string[] | undefined => {
+    const current = unwrapExpression(node);
+    if (ts.isIdentifier(current)) {
+      if (localName.collectionLocalNames.includes(current.text)) {
+        const definition = [...definitions]
+          .reverse()
+          .find(
+            (candidate) =>
+              candidate.name === current.text &&
+              candidate.sourceOffset !== localName.sourceOffset,
+          );
+        const parent = definition
+          ? resolveEachCollectionPath(definition, definitions, rootNames)
+          : undefined;
+        return parent ? [...parent, '[]'] : undefined;
+      }
+      return rootNames.has(current.text) ? [current.text] : undefined;
+    }
+    if (ts.isPropertyAccessExpression(current)) {
+      const parent = resolve(current.expression);
+      return parent ? [...parent, current.name.text] : undefined;
+    }
+    if (ts.isElementAccessExpression(current)) {
+      const parent = resolve(current.expression);
+      const part = getElementPathPart(
+        current.argumentExpression,
+        sourceFile,
+        0,
+      );
+      return parent && part ? [...parent, part.text] : undefined;
+    }
+  };
+  const statement = sourceFile.statements[0];
+  return statement && ts.isExpressionStatement(statement)
+    ? resolve(statement.expression)
+    : undefined;
 }
 
-function getStaticElementName(
+function getElementPathPart(
   expression: ts.Expression,
   sourceFile: ts.SourceFile,
   sourceOffset: number,
-): { text: string; start: number; end: number } | undefined {
+): { text: string; start?: number; end?: number } | undefined {
+  if (ts.isNumericLiteral(expression)) {
+    return { text: '[]' };
+  }
   if (
     !ts.isStringLiteral(expression) &&
     !ts.isNoSubstitutionTemplateLiteral(expression)
