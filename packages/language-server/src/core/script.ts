@@ -829,7 +829,10 @@ interface ObjectTypeProperty {
 
 function parseObjectType(typeName: string): ObjectTypeProperty[] | undefined {
   const trimmed = typeName.trim();
-  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+  if (
+    !trimmed.startsWith('{') ||
+    scanBalanced(trimmed, 0, '{', '}') !== trimmed.length
+  ) {
     return;
   }
   const body = trimmed.slice(1, -1).trim();

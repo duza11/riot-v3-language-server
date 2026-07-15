@@ -491,6 +491,88 @@ describe('global type virtual code', () => {
     expect(globals).toContain('item: { value: string } | { count: number };');
   });
 
+  it('does not merge separate JSDoc object union assignments as object literals', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /** @type {{ a: number } | { a: string }} */
+    this.value = { a: 1 }
+    /** @type {{ b: number } | { b: string }} */
+    this.value = { b: 1 }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('value: { a: number } | { a: string };');
+    expect(globals).not.toContain('a: string; b: number');
+  });
+
+  it('does not merge separate JSDoc object intersection assignments as object literals', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /** @type {{ a: number } & { b: string }} */
+    this.value = { a: 1, b: 'b' }
+    /** @type {{ c: boolean } & { d: number }} */
+    this.value = { c: true, d: 1 }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('value: { a: number } & { b: string };');
+    expect(globals).not.toContain('b: string; c: boolean');
+  });
+
+  it('does not merge nested assignments into JSDoc object unions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /** @type {{ a: number } | { a: string }} */
+    this.value = { a: 1 }
+    this.value.extra = true
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('value: { a: number } | { a: string };');
+    expect(globals).not.toContain('a: string; extra: boolean');
+  });
+
+  it('does not merge nested assignments into JSDoc object intersections', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /** @type {{ a: number } & { b: string }} */
+    this.value = { a: 1, b: 'b' }
+    this.value.extra = true
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('value: { a: number } & { b: string };');
+    expect(globals).not.toContain('b: string; extra: boolean');
+  });
+
   it('merges nested component state assignments into object literal types', () => {
     const code = createVirtualCode(`
 <demo-widget>
