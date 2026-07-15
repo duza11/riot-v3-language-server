@@ -28,6 +28,12 @@ interface ScriptPropertyAssignment {
   path: string[];
   sourceOffset: number;
   typeName: string;
+  typeOrigin: ScriptProperty['typeOrigin'];
+}
+
+interface AssignedPropertyType {
+  typeName: string;
+  typeOrigin: ScriptProperty['typeOrigin'];
 }
 
 const dynamicStringIndexProperty = '[key: string]';
@@ -169,16 +175,17 @@ export function scanRiotV3MethodProperties(
       if (method) {
         const name = text.slice(method.nameStart, method.nameEnd);
         if (!riotV3TagInstanceMembers.has(name)) {
-          const typeName =
-            inferJSDocRiotMethodType(
-              text,
-              method.nameEnd,
-              findPrecedingJSDoc(text, method.nameStart),
-            ) ?? '(...args: any[]) => any';
+          const jsDocType = inferJSDocRiotMethodType(
+            text,
+            method.nameEnd,
+            findPrecedingJSDoc(text, method.nameStart),
+          );
           properties.push({
             name,
             sourceOffset: sourceOffset + method.nameStart,
-            typeName,
+            typeName: jsDocType ?? '(...args: any[]) => any',
+            assignmentKind: 'replacement',
+            typeOrigin: jsDocType ? 'explicit' : 'inferred',
           });
         }
         offset = method.bodyEnd;
@@ -391,8 +398,9 @@ function scanOwnerPropertyAssignment(
     sourceOffset: sourceOffset + chain.nameStart,
     typeName:
       assignedType && !chain.path.includes(dynamicStringIndexProperty)
-        ? assignedType
+        ? assignedType.typeName
         : 'any',
+    typeOrigin: assignedType?.typeOrigin ?? 'inferred',
   };
 }
 
@@ -488,7 +496,7 @@ function inferAssignedPropertyTypeIfAssigned(
   text: string,
   nameEnd: number,
   jsDoc: string | undefined,
-): string | undefined {
+): AssignedPropertyType | undefined {
   let cursor = nameEnd;
   while (cursor < text.length && /\s/.test(text[cursor])) {
     cursor++;
@@ -508,15 +516,18 @@ function inferAssignedPropertyTypeIfAssigned(
   }
   const jsDocType = jsDoc ? parseJSDocType(jsDoc) : undefined;
   if (jsDocType) {
-    return jsDocType;
+    return { typeName: jsDocType, typeOrigin: 'explicit' };
   }
   const jsDocFunctionType = jsDoc
     ? inferJSDocFunctionType(text, cursor, jsDoc)
     : undefined;
   if (jsDocFunctionType) {
-    return jsDocFunctionType;
+    return { typeName: jsDocFunctionType, typeOrigin: 'explicit' };
   }
-  return inferExpressionType(text, cursor);
+  return {
+    typeName: inferExpressionType(text, cursor),
+    typeOrigin: 'inferred',
+  };
 }
 
 function findPrecedingJSDoc(text: string, offset: number): string | undefined {
@@ -765,6 +776,8 @@ function createScriptPropertyFromAssignment(
     typeName: path.length
       ? createNestedObjectType(path, assignment.typeName)
       : assignment.typeName,
+    assignmentKind: path.length ? 'augmentation' : 'replacement',
+    typeOrigin: assignment.typeOrigin,
   };
 }
 
@@ -783,14 +796,39 @@ function mergeScriptProperty(
   if (!existing) {
     return next;
   }
-  const typeName = mergePropertyTypes(existing.typeName, next.typeName);
-  if (typeName !== undefined) {
-    return { ...existing, typeName };
+  if (existing.typeOrigin === 'explicit') {
+    return existing;
   }
-  if (existing.typeName === 'any' && next.typeName !== 'any') {
+  if (next.typeOrigin === 'explicit') {
     return next;
   }
-  return existing;
+  const typeName = mergePropertyTypes(existing.typeName, next.typeName);
+  if (typeName !== undefined) {
+    return { ...existing, typeName, unionTypeNames: undefined };
+  }
+  if (existing.typeName === 'any') {
+    return next;
+  }
+  if (next.typeName === 'any' || existing.typeName === next.typeName) {
+    return existing;
+  }
+  const unionTypeNames = [
+    ...(existing.unionTypeNames ?? [existing.typeName]),
+    ...(next.unionTypeNames ?? [next.typeName]),
+  ].filter((typeName, index, types) => types.indexOf(typeName) === index);
+  return {
+    ...existing,
+    typeName: formatUnionType(unionTypeNames),
+    unionTypeNames,
+  };
+}
+
+function formatUnionType(typeNames: string[]): string {
+  return typeNames.map(parenthesizeUnionMember).join(' | ');
+}
+
+function parenthesizeUnionMember(typeName: string): string {
+  return typeName.includes('=>') ? `(${typeName})` : typeName;
 }
 
 function mergePropertyTypes(

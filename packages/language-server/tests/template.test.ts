@@ -326,6 +326,32 @@ describe('each template expressions', () => {
     expect(type).toBe('string | number');
   });
 
+  it('resolves unions from repeated script property assignments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ message }</p>
+  <script>
+    const self = this
+    self.message = null
+    if (this.opts.flag === true) {
+      self.message = 'Hello'
+    }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'void (this.message)',
+      'message',
+    );
+
+    // Assert
+    expect(type).toBe('string | null');
+  });
+
   it('resolves template method types from script JSDoc function assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
