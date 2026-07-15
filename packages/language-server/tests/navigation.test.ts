@@ -13,6 +13,188 @@ import {
 } from './helpers/virtualCode';
 
 describe('rename edits', () => {
+  it('renames methods declared in component state object literals', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <button onclick={ actions.save }>Save</button>
+  <script>
+    this.actions = {
+      save() {},
+    }
+    this.actions.save()
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, 'save() {}', 'save');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'persist');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, 'save() {}', 'save'),
+      offsetOf(source, 'this.actions.save()', 'save'),
+      offsetOf(source, '{ actions.save }', 'save'),
+    ]);
+  });
+
+  it('renames matching properties declared by every member of a JSDoc union', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ entry.name }</p>
+  <script>
+    /**
+     * @typedef {Object} TextEntry
+     * @property {string} name
+     */
+    /**
+     * @typedef {Object} NumericEntry
+     * @property {number} name
+     */
+    /** @type {TextEntry | NumericEntry} */
+    this.entry = this.opts.entry
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ entry.name }', 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'label');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, '@property {string} name', 'name'),
+      offsetOf(source, '@property {number} name', 'name'),
+      offsetOf(source, '{ entry.name }', 'name'),
+    ]);
+  });
+
+  it('renames properties declared by a member of a JSDoc intersection', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ entry.path }</p>
+  <script>
+    /**
+     * @typedef {Object} StoredEntry
+     * @property {string} path
+     */
+    /**
+     * @typedef {Object} Timestamped
+     * @property {number} updatedAt
+     */
+    /** @type {StoredEntry & Timestamped} */
+    this.entry = this.opts.entry
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ entry.path }', 'path');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'location');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, '@property {string} path', 'path'),
+      offsetOf(source, '{ entry.path }', 'path'),
+    ]);
+  });
+
+  it('renames properties declared by inline JSDoc object intersections', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ entry.path }</p>
+  <script>
+    /** @type {{ path: string } & { updatedAt: number }} */
+    this.entry = this.opts.entry
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ entry.path }', 'path');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'location');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, '{ path: string }', 'path'),
+      offsetOf(source, '{ entry.path }', 'path'),
+    ]);
+  });
+
+  it('renames statically destructured object properties', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ user.name }</p>
+  <script>
+    this.user = { name: 'Alice' }
+    const { name: displayName } = this.user
+    console.log(displayName)
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ name: displayName }', 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'label');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ name: displayName }', 'name'),
+      offsetOf(source, '{ user.name }', 'name'),
+    ]);
+  });
+
+  it('does not rename nested properties without a static declaration', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ data.name }</p>
+  <script>
+    /** @type {any} */
+    this.data = this.opts.data
+    console.log(this.data.name)
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, 'this.data.name', 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'label');
+
+    // Assert
+    expect(edits).toEqual([]);
+  });
+
+  it('does not rename nested properties in another component', () => {
+    // Arrange
+    const source = `
+<first-widget>
+  <p>{ user.name }</p>
+  <script>this.user = { name: 'Alice' }</script>
+</first-widget>
+<second-widget>
+  <p>{ user.name }</p>
+  <script>this.user = { name: 'Bob' }</script>
+</second-widget>
+`;
+    const position = offsetOf(source, "{ name: 'Alice' }", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'label');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ user.name }', 'name'),
+    ]);
+  });
+
   it('renames array element properties across script and each references', () => {
     // Arrange
     const source = `

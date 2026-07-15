@@ -25,17 +25,20 @@ export function getNestedPropertyOccurrences(
   component: RiotV3Component,
   templateAnalysis: TemplateAnalysis,
 ): NestedPropertyOccurrence[] {
-  const rootNames = new Set(
-    getScriptProperties(snapshot, component.scripts).map(
-      (property) => property.name,
-    ),
-  );
+  const rootProperties = getScriptProperties(snapshot, component.scripts);
+  const rootNames = new Set(rootProperties.map((property) => property.name));
   const typedefNavigation = getTypedefNavigation(
     snapshot,
     component.scripts,
-    getScriptProperties(snapshot, component.scripts),
+    rootProperties,
   );
   const aliases = new Set(getScriptThisAliases(snapshot, component.scripts));
+  const inlineTypeDeclarations = getInlineTypeDeclarations(
+    snapshot,
+    component.scripts,
+    rootProperties,
+    aliases,
+  );
   const scriptOccurrences = component.scripts.flatMap((script) =>
     getScriptOccurrences(
       snapshot,
@@ -57,10 +60,170 @@ export function getNestedPropertyOccurrences(
 
   return [
     ...typedefNavigation.declarations,
+    ...inlineTypeDeclarations,
     ...scriptOccurrences.filter((occurrence) => occurrence.isDeclaration),
     ...scriptOccurrences.filter((occurrence) => !occurrence.isDeclaration),
     ...templateOccurrences,
   ];
+}
+
+function getInlineTypeDeclarations(
+  snapshot: ts.IScriptSnapshot,
+  scripts: ScriptBlock[],
+  rootProperties: ReturnType<typeof getScriptProperties>,
+  aliases: Set<string>,
+): NestedPropertyOccurrence[] {
+  const declarations: NestedPropertyOccurrence[] = [];
+  for (const property of rootProperties) {
+    const script = scripts.find(
+      (candidate) =>
+        property.sourceOffset >= candidate.start &&
+        property.sourceOffset < candidate.end,
+    );
+    if (!script) {
+      continue;
+    }
+    const text = snapshot.getText(script.start, script.end);
+    const propertyOffset = property.sourceOffset - script.start;
+    const commentEnd = text.lastIndexOf('*/', propertyOffset);
+    const commentStart = text.lastIndexOf('/**', commentEnd);
+    if (commentStart === -1 || commentEnd === -1) {
+      continue;
+    }
+    const qualifier = text.slice(commentEnd + 2, propertyOffset);
+    if (!isInstancePropertyQualifier(qualifier, aliases)) {
+      continue;
+    }
+    const comment = text.slice(commentStart, commentEnd + 2);
+    const typeRange = getJSDocTypeRange(comment);
+    if (!typeRange) {
+      continue;
+    }
+    const prefix = 'type InlineProperty = ';
+    const sourceFile = ts.createSourceFile(
+      'inline-property.ts',
+      `${prefix}${typeRange.text};`,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const typeAlias = sourceFile.statements.find(ts.isTypeAliasDeclaration);
+    if (!typeAlias) {
+      continue;
+    }
+    const sourceOffset =
+      script.start + commentStart + typeRange.start - prefix.length;
+    addInlineTypeDeclarations(
+      typeAlias.type,
+      [property.name],
+      sourceFile,
+      sourceOffset,
+      declarations,
+    );
+  }
+  return declarations;
+}
+
+function isInstancePropertyQualifier(
+  text: string,
+  aliases: Set<string>,
+): boolean {
+  const qualifier = text.trim().replace(/\s*\.\s*$/, '');
+  return qualifier === 'this' || aliases.has(qualifier);
+}
+
+function getJSDocTypeRange(
+  comment: string,
+): { text: string; start: number } | undefined {
+  const tag = /@type\b/.exec(comment);
+  if (!tag) {
+    return;
+  }
+  let start = tag.index + tag[0].length;
+  while (/\s/.test(comment[start] ?? '')) {
+    start++;
+  }
+  if (comment[start] !== '{') {
+    return;
+  }
+  let depth = 1;
+  for (let end = start + 1; end < comment.length; end++) {
+    if (comment[end] === '{') {
+      depth++;
+    } else if (comment[end] === '}') {
+      depth--;
+      if (depth === 0) {
+        return { text: comment.slice(start + 1, end), start: start + 1 };
+      }
+    }
+  }
+}
+
+function addInlineTypeDeclarations(
+  node: ts.TypeNode,
+  parentPath: string[],
+  sourceFile: ts.SourceFile,
+  sourceOffset: number,
+  declarations: NestedPropertyOccurrence[],
+): void {
+  if (ts.isParenthesizedTypeNode(node)) {
+    addInlineTypeDeclarations(
+      node.type,
+      parentPath,
+      sourceFile,
+      sourceOffset,
+      declarations,
+    );
+    return;
+  }
+  if (ts.isArrayTypeNode(node)) {
+    addInlineTypeDeclarations(
+      node.elementType,
+      [...parentPath, '[]'],
+      sourceFile,
+      sourceOffset,
+      declarations,
+    );
+    return;
+  }
+  if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node)) {
+    for (const type of node.types) {
+      addInlineTypeDeclarations(
+        type,
+        parentPath,
+        sourceFile,
+        sourceOffset,
+        declarations,
+      );
+    }
+    return;
+  }
+  if (!ts.isTypeLiteralNode(node)) {
+    return;
+  }
+  for (const member of node.members) {
+    if (!ts.isPropertySignature(member) || !member.type) {
+      continue;
+    }
+    const name = getStaticPropertyName(member.name, sourceFile, sourceOffset);
+    if (!name) {
+      continue;
+    }
+    const path = [...parentPath, name.text];
+    declarations.push({
+      path,
+      start: name.start,
+      end: name.end,
+      isDeclaration: true,
+    });
+    addInlineTypeDeclarations(
+      member.type,
+      path,
+      sourceFile,
+      sourceOffset,
+      declarations,
+    );
+  }
 }
 
 function getScriptOccurrences(
@@ -179,7 +342,12 @@ function getScriptOccurrences(
       return;
     }
     for (const property of expression.properties) {
-      if (!ts.isPropertyAssignment(property)) {
+      if (
+        !ts.isPropertyAssignment(property) &&
+        !ts.isMethodDeclaration(property) &&
+        !ts.isGetAccessorDeclaration(property) &&
+        !ts.isSetAccessorDeclaration(property)
+      ) {
         continue;
       }
       const name = getStaticPropertyName(
@@ -197,12 +365,58 @@ function getScriptOccurrences(
         end: name.end,
         isDeclaration: true,
       });
-      addObjectDeclarations(property.initializer, path);
+      if (ts.isPropertyAssignment(property)) {
+        addObjectDeclarations(property.initializer, path);
+      }
+    }
+  };
+
+  const addBindingDeclarations = (
+    pattern: ts.ObjectBindingPattern,
+    parentPath: string[],
+  ): void => {
+    for (const element of pattern.elements) {
+      if (element.dotDotDotToken) {
+        continue;
+      }
+      const propertyName =
+        element.propertyName ??
+        (ts.isIdentifier(element.name) ? element.name : undefined);
+      if (!propertyName) {
+        continue;
+      }
+      const name = getStaticPropertyName(
+        propertyName,
+        sourceFile,
+        script.start,
+      );
+      if (!name) {
+        continue;
+      }
+      const path = [...parentPath, name.text];
+      add({
+        path,
+        start: name.start,
+        end: name.end,
+        isDeclaration: true,
+      });
+      if (ts.isObjectBindingPattern(element.name)) {
+        addBindingDeclarations(element.name, path);
+      }
     }
   };
 
   const visit = (node: ts.Node): void => {
     if (
+      ts.isVariableDeclaration(node) &&
+      ts.isObjectBindingPattern(node.name) &&
+      node.initializer
+    ) {
+      const resolved = resolvePath(node.initializer);
+      if (resolved) {
+        addBindingDeclarations(node.name, resolved.path);
+      }
+    } else if (
       ts.isBinaryExpression(node) &&
       node.operatorToken.kind === ts.SyntaxKind.EqualsToken
     ) {
@@ -447,7 +661,7 @@ function getTypedefNavigation(
   }
 
   const declarations = new Map<string, NestedPropertyOccurrence>();
-  const symbols = new Map<string, string>();
+  const associations: { path: string; symbolKey: string }[] = [];
   const addTypeProperties = (
     rootPath: string[],
     typeName: string,
@@ -467,7 +681,7 @@ function getTypedefNavigation(
         for (const property of definition.properties) {
           const path = [...ownerPath, property.name];
           const symbolKey = `typedef:${definition.name}.${property.name}`;
-          symbols.set(path.join('.'), symbolKey);
+          associations.push({ path: path.join('.'), symbolKey });
           declarations.set(symbolKey, {
             path,
             symbolKey,
@@ -484,7 +698,42 @@ function getTypedefNavigation(
   for (const property of rootProperties) {
     addTypeProperties([property.name], property.typeName, new Set());
   }
-  return { declarations: [...declarations.values()], symbols };
+
+  const parents = new Map<string, string>();
+  const find = (key: string): string => {
+    const parent = parents.get(key);
+    if (!parent) {
+      parents.set(key, key);
+      return key;
+    }
+    if (parent === key) {
+      return key;
+    }
+    const root = find(parent);
+    parents.set(key, root);
+    return root;
+  };
+  const union = (left: string, right: string): void => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) {
+      parents.set(rightRoot, leftRoot);
+    }
+  };
+  for (const association of associations) {
+    union(`path:${association.path}`, association.symbolKey);
+  }
+  const symbols = new Map<string, string>();
+  for (const association of associations) {
+    symbols.set(association.path, find(`path:${association.path}`));
+  }
+  return {
+    declarations: [...declarations.values()].map((declaration) => ({
+      ...declaration,
+      symbolKey: find(declaration.symbolKey ?? declaration.path.join('.')),
+    })),
+    symbols,
+  };
 }
 
 function getTypeContainerPaths(typeName: string, expected: string): string[][] {
@@ -624,6 +873,12 @@ function getStaticPropertyName(
   sourceFile: ts.SourceFile,
   sourceOffset: number,
 ): { text: string; start: number; end: number } | undefined {
+  if (ts.isComputedPropertyName(name)) {
+    const part = getElementPathPart(name.expression, sourceFile, sourceOffset);
+    return part?.start !== undefined && part.end !== undefined
+      ? { text: part.text, start: part.start, end: part.end }
+      : undefined;
+  }
   if (ts.isIdentifier(name)) {
     return {
       text: name.text,
