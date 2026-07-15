@@ -222,8 +222,12 @@ function getNestedPropertyReferenceRanges(
   }
   const matching = occurrences.filter(
     (occurrence) =>
-      occurrence.path.length === target.path.length &&
-      occurrence.path.every((segment, index) => segment === target.path[index]),
+      occurrence.symbolKey === target.symbolKey &&
+      (target.symbolKey !== undefined ||
+        (occurrence.path.length === target.path.length &&
+          occurrence.path.every(
+            (segment, index) => segment === target.path[index],
+          ))),
   );
   if (!matching.some((occurrence) => occurrence.isDeclaration)) {
     return;

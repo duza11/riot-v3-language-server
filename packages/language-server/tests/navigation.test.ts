@@ -13,6 +13,140 @@ import {
 } from './helpers/virtualCode';
 
 describe('rename edits', () => {
+  it('renames a JSDoc typedef property across script and template references', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ file.path }</p>
+  <script>
+    const self = this
+    /**
+     * @typedef {Object} FileInfo
+     * @property {string} path
+     * @property {number} size
+     */
+    /** @type {FileInfo} */
+    self.file = this.opts.file
+    console.log(self.file.path)
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, 'self.file.path', 'path');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'location');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, '@property {string} path', 'path'),
+      offsetOf(source, 'self.file.path', 'path'),
+      offsetOf(source, '{ file.path }', 'path'),
+    ]);
+  });
+
+  it('renames a shared JSDoc typedef property across component state objects', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ primary.path }</p>
+  <p>{ secondary.path }</p>
+  <script>
+    /**
+     * @typedef {Object} FileInfo
+     * @property {string} path
+     */
+    /** @type {FileInfo} */
+    this.primary = this.opts.primary
+    /** @type {FileInfo} */
+    this.secondary = this.opts.secondary
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '@property {string} path', 'path');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'location');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, '@property {string} path', 'path'),
+      offsetOf(source, '{ primary.path }', 'path'),
+      offsetOf(source, '{ secondary.path }', 'path'),
+    ]);
+  });
+
+  it('renames recursively nested object properties', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ settings.profile.name }</p>
+  <script>
+    const self = this
+    self.settings = { profile: { name: 'Alice' } }
+    console.log(self.settings.profile.name)
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, "{ name: 'Alice' }", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, 'self.settings.profile.name', 'name'),
+      offsetOf(source, '{ settings.profile.name }', 'name'),
+    ]);
+  });
+
+  it('renames statically indexed nested properties', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ user['name'] }</p>
+  <script>
+    const self = this
+    self.user = { name: 'Alice' }
+    console.log(self.user['name'])
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, "self.user['name']", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, "self.user['name']", 'name'),
+      offsetOf(source, "{ user['name'] }", 'name'),
+    ]);
+  });
+
+  it('does not rename dynamically indexed nested properties', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ user[key] }</p>
+  <script>
+    const self = this
+    self.user = { name: 'Alice' }
+    const key = 'name'
+    console.log(self.user[key])
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, 'self.user[key]', 'key');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(edits).toEqual([]);
+  });
+
   it('renames a nested object property across script and template references', () => {
     // Arrange
     const source = `

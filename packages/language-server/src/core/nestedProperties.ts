@@ -6,6 +6,7 @@ import type { RiotV3Component, ScriptBlock } from './types';
 
 export interface NestedPropertyOccurrence {
   path: string[];
+  symbolKey?: string;
   start: number;
   end: number;
   isDeclaration: boolean;
@@ -26,15 +27,28 @@ export function getNestedPropertyOccurrences(
       (property) => property.name,
     ),
   );
+  const typedefNavigation = getTypedefNavigation(
+    snapshot,
+    component.scripts,
+    getScriptProperties(snapshot, component.scripts),
+  );
   const aliases = new Set(getScriptThisAliases(snapshot, component.scripts));
   const scriptOccurrences = component.scripts.flatMap((script) =>
-    getScriptOccurrences(snapshot, script, aliases, rootNames),
+    getScriptOccurrences(
+      snapshot,
+      script,
+      aliases,
+      rootNames,
+      typedefNavigation.symbols,
+    ),
   );
   const templateOccurrences = templateAnalysis.expressions.flatMap(
-    (expression) => getTemplateOccurrences(expression, rootNames),
+    (expression) =>
+      getTemplateOccurrences(expression, rootNames, typedefNavigation.symbols),
   );
 
   return [
+    ...typedefNavigation.declarations,
     ...scriptOccurrences.filter((occurrence) => occurrence.isDeclaration),
     ...scriptOccurrences.filter((occurrence) => !occurrence.isDeclaration),
     ...templateOccurrences,
@@ -46,6 +60,7 @@ function getScriptOccurrences(
   script: ScriptBlock,
   aliases: Set<string>,
   rootNames: Set<string>,
+  symbols: Map<string, string>,
 ): NestedPropertyOccurrence[] {
   const text = snapshot.getText(script.start, script.end);
   const sourceFile = ts.createSourceFile(
@@ -61,7 +76,8 @@ function getScriptOccurrences(
     if (occurrence.path.length < 2 || !rootNames.has(occurrence.path[0])) {
       return;
     }
-    const key = `${occurrence.start}:${occurrence.end}:${occurrence.path.join('.')}`;
+    occurrence.symbolKey ??= symbols.get(occurrence.path.join('.'));
+    const key = `${occurrence.start}:${occurrence.end}:${occurrence.symbolKey ?? occurrence.path.join('.')}`;
     const existing = occurrences.get(key);
     if (!existing || occurrence.isDeclaration) {
       occurrences.set(key, occurrence);
@@ -75,6 +91,30 @@ function getScriptOccurrences(
     }
     if (ts.isIdentifier(expression) && aliases.has(expression.text)) {
       return { path: [], segments: [] };
+    }
+    if (ts.isElementAccessExpression(expression)) {
+      const parent = resolvePath(expression.expression);
+      const name = getStaticElementName(
+        expression.argumentExpression,
+        sourceFile,
+        script.start,
+      );
+      if (!parent || !name) {
+        return;
+      }
+      const path = [...parent.path, name.text];
+      return {
+        path,
+        segments: [
+          ...parent.segments,
+          {
+            path,
+            start: name.start,
+            end: name.end,
+            isDeclaration: false,
+          },
+        ],
+      };
     }
     if (!ts.isPropertyAccessExpression(expression)) {
       return;
@@ -151,7 +191,10 @@ function getScriptOccurrences(
         addResolvedPath(resolved, resolved.segments.at(-1)?.end);
         addObjectDeclarations(node.right, resolved.path);
       }
-    } else if (ts.isPropertyAccessExpression(node)) {
+    } else if (
+      ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node)
+    ) {
       const resolved = resolvePath(node);
       if (resolved) {
         addResolvedPath(resolved);
@@ -167,6 +210,7 @@ function getScriptOccurrences(
 function getTemplateOccurrences(
   expression: TemplateExpression,
   rootNames: Set<string>,
+  symbols: Map<string, string>,
 ): NestedPropertyOccurrence[] {
   const prefix = '(';
   const sourceFile = ts.createSourceFile(
@@ -200,6 +244,30 @@ function getTemplateOccurrences(
         segments: [],
       };
     }
+    if (ts.isElementAccessExpression(current)) {
+      const parent = resolvePath(current.expression);
+      const name = getStaticElementName(
+        current.argumentExpression,
+        sourceFile,
+        expression.sourceOffset - prefix.length,
+      );
+      if (!parent || !name) {
+        return;
+      }
+      const path = [...parent.path, name.text];
+      return {
+        path,
+        segments: [
+          ...parent.segments,
+          {
+            path,
+            start: name.start,
+            end: name.end,
+            isDeclaration: false,
+          },
+        ],
+      };
+    }
     if (!ts.isPropertyAccessExpression(current)) {
       return;
     }
@@ -227,12 +295,16 @@ function getTemplateOccurrences(
   };
 
   const visit = (node: ts.Node): void => {
-    if (ts.isPropertyAccessExpression(node)) {
+    if (
+      ts.isPropertyAccessExpression(node) ||
+      ts.isElementAccessExpression(node)
+    ) {
       const resolved = resolvePath(node);
       for (const segment of resolved?.segments ?? []) {
         if (segment.path.length >= 2) {
+          segment.symbolKey ??= symbols.get(segment.path.join('.'));
           occurrences.set(
-            `${segment.start}:${segment.end}:${segment.path.join('.')}`,
+            `${segment.start}:${segment.end}:${segment.symbolKey ?? segment.path.join('.')}`,
             segment,
           );
         }
@@ -243,6 +315,122 @@ function getTemplateOccurrences(
 
   visit(sourceFile);
   return [...occurrences.values()];
+}
+
+interface TypedefProperty {
+  name: string;
+  typeName: string;
+  start: number;
+  end: number;
+}
+
+interface TypedefDefinition {
+  name: string;
+  properties: TypedefProperty[];
+}
+
+function getTypedefNavigation(
+  snapshot: ts.IScriptSnapshot,
+  scripts: ScriptBlock[],
+  rootProperties: ReturnType<typeof getScriptProperties>,
+): {
+  declarations: NestedPropertyOccurrence[];
+  symbols: Map<string, string>;
+} {
+  const definitions = new Map<string, TypedefDefinition>();
+  for (const script of scripts) {
+    const text = snapshot.getText(script.start, script.end);
+    for (const match of text.matchAll(/\/\*\*[\s\S]*?\*\//g)) {
+      const comment = match[0];
+      const typedef = /@typedef\s*\{[^}]+\}\s*([A-Za-z_$][\w$]*)/.exec(comment);
+      if (!typedef || match.index === undefined) {
+        continue;
+      }
+      const properties: TypedefProperty[] = [];
+      for (const property of comment.matchAll(
+        /@property\s*\{([^}]+)\}\s*\[?([A-Za-z_$][\w$]*)(?:=[^\]\s]+)?\]?/g,
+      )) {
+        if (property.index === undefined) {
+          continue;
+        }
+        const relativeNameStart =
+          property.index + property[0].lastIndexOf(property[2]);
+        properties.push({
+          name: property[2],
+          typeName: property[1].trim(),
+          start: script.start + match.index + relativeNameStart,
+          end:
+            script.start + match.index + relativeNameStart + property[2].length,
+        });
+      }
+      definitions.set(typedef[1], { name: typedef[1], properties });
+    }
+  }
+
+  const declarations = new Map<string, NestedPropertyOccurrence>();
+  const symbols = new Map<string, string>();
+  const addTypeProperties = (
+    rootPath: string[],
+    typeName: string,
+    visited: Set<string>,
+  ): void => {
+    for (const definition of definitions.values()) {
+      if (!containsTypeName(typeName, definition.name)) {
+        continue;
+      }
+      const visitKey = `${rootPath.join('.')}:${definition.name}`;
+      if (visited.has(visitKey)) {
+        continue;
+      }
+      const nextVisited = new Set(visited).add(visitKey);
+      for (const property of definition.properties) {
+        const path = [...rootPath, property.name];
+        const symbolKey = `typedef:${definition.name}.${property.name}`;
+        symbols.set(path.join('.'), symbolKey);
+        declarations.set(symbolKey, {
+          path,
+          symbolKey,
+          start: property.start,
+          end: property.end,
+          isDeclaration: true,
+        });
+        addTypeProperties(path, property.typeName, nextVisited);
+      }
+    }
+  };
+
+  for (const property of rootProperties) {
+    addTypeProperties([property.name], property.typeName, new Set());
+  }
+  return { declarations: [...declarations.values()], symbols };
+}
+
+function containsTypeName(typeName: string, expected: string): boolean {
+  return new RegExp(
+    `(^|[^A-Za-z0-9_$])${escapeRegExp(expected)}($|[^A-Za-z0-9_$])`,
+  ).test(typeName);
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getStaticElementName(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile,
+  sourceOffset: number,
+): { text: string; start: number; end: number } | undefined {
+  if (
+    !ts.isStringLiteral(expression) &&
+    !ts.isNoSubstitutionTemplateLiteral(expression)
+  ) {
+    return;
+  }
+  return {
+    text: expression.text,
+    start: sourceOffset + expression.getStart(sourceFile) + 1,
+    end: sourceOffset + expression.getEnd() - 1,
+  };
 }
 
 function unwrapExpression(expression: ts.Expression): ts.Expression {
