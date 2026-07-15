@@ -83,6 +83,25 @@ describe('script virtual code', () => {
     expect(type).toBe('number');
   });
 
+  it('resolves heterogeneous array element types from later script references', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.items = [{ a: 1 }, { a: 'a' }]
+    console.log(this.items[0].a)
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const type = getScriptIdentifierType(code, 'this.items[0].a', 'a');
+
+    // Assert
+    expect(type).toBe('string | number');
+  });
+
   it('converts Riot v3 top-level method syntax', () => {
     const code = createVirtualCode(`
 <demo-widget>

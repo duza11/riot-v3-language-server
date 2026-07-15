@@ -307,6 +307,25 @@ describe('each template expressions', () => {
     expect(indexType).toBe('number');
   });
 
+  it('infers heterogeneous Riot v3 each item property types', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p each={ item in items }>{ item.a }</p>
+  <script>
+    const self = this
+    self.items = [{ a: 1 }, { a: 'a' }]
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const type = getTemplateIdentifierType(code, 'item.a', 'a');
+
+    // Assert
+    expect(type).toBe('string | number');
+  });
+
   it('resolves template method types from script JSDoc function assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>

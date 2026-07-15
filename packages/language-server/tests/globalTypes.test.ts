@@ -328,6 +328,91 @@ describe('global type virtual code', () => {
     );
   });
 
+  it('parenthesizes heterogeneous object array element types', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.items = [{ a: 1 }, { a: 'a' }]
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('items: ({ a: number; } | { a: string; })[];');
+  });
+
+  it('parenthesizes heterogeneous primitive array element types', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.values = [1, 'a']
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('values: (number | string)[];');
+  });
+
+  it('parenthesizes function array element types', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.callbacks = [() => 1]
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('callbacks: ((...args: any[]) => any)[];');
+  });
+
+  it('parenthesizes heterogeneous nested array element types', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.values = [[1], ['a']]
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('values: (number[] | string[])[];');
+  });
+
+  it('parenthesizes heterogeneous arrays nested in object properties', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.state = { values: [1, 'a'] }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('state: { values: (number | string)[]; };');
+  });
+
   it('infers object literal property types from JSDoc comments in script assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
