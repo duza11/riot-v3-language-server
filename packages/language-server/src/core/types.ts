@@ -34,6 +34,9 @@ export interface ScriptProperty {
   name: string;
   sourceOffset: number;
   typeName: string;
+  assignmentKind: 'replacement' | 'augmentation';
+  typeOrigin: 'inferred' | 'explicit';
+  unionTypeNames?: string[];
 }
 
 export interface JSDocTypedef {

@@ -82,6 +82,142 @@ describe('global type virtual code', () => {
     expect(globals).toContain('message: string;');
   });
 
+  it('unions inferred component state types from repeated root assignments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.message = null
+    if (this.opts.flag === true) {
+      self.message = 'Hello'
+    }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('message: null | string;');
+  });
+
+  it('deduplicates repeated inferred component state types', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.value = 1
+    this.value = 2
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('value: number;');
+    expect(globals).not.toContain('value: number | number;');
+  });
+
+  it('keeps concrete inferred types when another assignment is any', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.value = getInitialValue()
+    this.value = true
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('value: boolean;');
+    expect(globals).not.toContain('value: any | boolean;');
+  });
+
+  it('parenthesizes function types in inferred component state unions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.handler = null
+    this.handler = () => true
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('handler: null | ((...args: any[]) => any);');
+  });
+
+  it('unions inferred object types from repeated root assignments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.value = { a: 1 }
+    this.value = { b: 'b' }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('value: { a: number; } | { b: string; };');
+    expect(globals).not.toContain('value: { a: number; b: string; };');
+  });
+
+  it('keeps explicit JSDoc types after later inferred assignments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    /** @type {string | null} */
+    this.message = null
+    this.message = 1
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('message: string | null;');
+    expect(globals).not.toContain('message: string | null | number;');
+  });
+
+  it('replaces earlier inferred types with explicit JSDoc types', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    this.message = 1
+    /** @type {string | null} */
+    this.message = null
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('message: string | null;');
+    expect(globals).not.toContain('message: number | string | null;');
+  });
+
   it('infers component methods from script this-alias function assignments', () => {
     const code = createVirtualCode(`
 <demo-widget>
