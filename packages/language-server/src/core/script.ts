@@ -829,7 +829,10 @@ interface ObjectTypeProperty {
 
 function parseObjectType(typeName: string): ObjectTypeProperty[] | undefined {
   const trimmed = typeName.trim();
-  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+  if (
+    !trimmed.startsWith('{') ||
+    scanBalanced(trimmed, 0, '{', '}') !== trimmed.length
+  ) {
     return;
   }
   const body = trimmed.slice(1, -1).trim();
@@ -960,7 +963,16 @@ function inferArrayLiteralType(text: string, start: number): string {
   if (!elementTypes.length) {
     return 'any[]';
   }
-  return getUnionType(elementTypes) + '[]';
+  return formatArrayType(elementTypes);
+}
+
+function formatArrayType(elementTypes: string[]): string {
+  const uniqueElementTypes = [...new Set(elementTypes)];
+  const elementType = uniqueElementTypes.join(' | ');
+  const requiresParentheses =
+    uniqueElementTypes.length > 1 ||
+    elementType.startsWith('(...args: any[]) =>');
+  return `${requiresParentheses ? `(${elementType})` : elementType}[]`;
 }
 
 function inferObjectLiteralType(text: string, start: number): string {
@@ -1169,10 +1181,6 @@ function formatObjectLiteralTypePropertyName(text: string): string | undefined {
   ) {
     return text;
   }
-}
-
-function getUnionType(types: string[]): string {
-  return [...new Set(types)].join(' | ');
 }
 
 function isNumberLiteralStart(text: string, start: number): boolean {
