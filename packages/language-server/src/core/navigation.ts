@@ -1,6 +1,7 @@
 import type * as ts from 'typescript';
 import * as html from 'vscode-html-languageservice';
 import { getRiotV3Components, getTemplateIgnoredRanges } from './components';
+import { getNestedPropertyOccurrences } from './nestedProperties';
 import {
   findPreviousNonWhitespace,
   isIdentifierPart,
@@ -67,6 +68,14 @@ export function getRiotV3RenameEdits(
     }));
   }
 
+  const nestedReferences = getNestedPropertyReferenceRanges(context);
+  if (nestedReferences) {
+    return nestedReferences.map((range) => ({
+      ...range,
+      newText: newName,
+    }));
+  }
+
   const scriptProperties = getScriptProperties(snapshot, component.scripts);
   if (
     !isRiotPropertyRenameSource(
@@ -118,6 +127,11 @@ export function getRiotV3ReferenceRanges(
     }));
   }
 
+  const nestedReferences = getNestedPropertyReferenceRanges(context);
+  if (nestedReferences) {
+    return nestedReferences;
+  }
+
   const scriptProperties = getScriptProperties(snapshot, component.scripts);
   if (
     !isRiotPropertyRenameSource(
@@ -165,6 +179,13 @@ export function getRiotV3RenameRange(
     };
   }
 
+  if (getNestedPropertyReferenceRanges(context)) {
+    return {
+      start: identifier.start,
+      end: identifier.end,
+    };
+  }
+
   const scriptProperties = getScriptProperties(snapshot, component.scripts);
   if (
     isRiotPropertyRenameSource(
@@ -181,6 +202,37 @@ export function getRiotV3RenameRange(
       end: identifier.end,
     };
   }
+}
+
+function getNestedPropertyReferenceRanges(
+  context: NavigationContext,
+): RiotV3ReferenceRange[] | undefined {
+  const occurrences = getNestedPropertyOccurrences(
+    context.snapshot,
+    context.component,
+    context.templateAnalysis,
+  );
+  const target = occurrences.find(
+    (occurrence) =>
+      context.identifier.start >= occurrence.start &&
+      context.identifier.end <= occurrence.end,
+  );
+  if (!target) {
+    return;
+  }
+  const matching = occurrences.filter(
+    (occurrence) =>
+      occurrence.symbolKey === target.symbolKey &&
+      (target.symbolKey !== undefined ||
+        (occurrence.path.length === target.path.length &&
+          occurrence.path.every(
+            (segment, index) => segment === target.path[index],
+          ))),
+  );
+  if (!matching.some((occurrence) => occurrence.isDeclaration)) {
+    return;
+  }
+  return matching.map(({ start, end }) => ({ start, end }));
 }
 
 interface NavigationContext {
