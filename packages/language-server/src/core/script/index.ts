@@ -8,14 +8,14 @@ import {
   scanComment,
   scanIdentifierEnd,
   scanJavaScriptNonCode,
-} from './scanners';
+} from '../scanners';
 import type {
   GeneratedSegment,
   JSDocTypedef,
   ScriptBlock,
   ScriptProperty,
   TextRange,
-} from './types';
+} from '../types';
 
 const riotV3ScriptContextSuffix = `
 }
