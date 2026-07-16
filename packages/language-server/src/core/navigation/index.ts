@@ -19,6 +19,8 @@ import {
 } from './rootProperties';
 import type { NavigationContext, NavigationOccurrence } from './types';
 
+export type { NavigationOccurrence } from './types';
+
 export function getRiotV3RenameEdits(
   sourceText: string,
   position: number,

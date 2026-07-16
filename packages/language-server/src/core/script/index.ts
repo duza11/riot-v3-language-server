@@ -2,7 +2,6 @@ export {
   getComponentScriptLanguageId,
   getScriptProperties,
   getScriptThisAliases,
-  scanInstanceProperties,
   scanInstancePropertyOccurrences,
   scanRiotV3MethodProperties,
 } from './analysis';

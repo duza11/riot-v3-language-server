@@ -61,7 +61,7 @@ export function getScriptThisAliases(
   return aliases;
 }
 
-export function scanInstanceProperties(
+function scanInstanceProperties(
   text: string,
   sourceOffset: number,
   sharedAliases: string[] = [],

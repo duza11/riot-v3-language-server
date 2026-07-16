@@ -7,8 +7,8 @@ import {
   getRiotV3ReferenceOccurrencesForAnalysis,
   getRiotV3RenameEditsForAnalysis,
   getRiotV3RenameRangeForAnalysis,
+  type NavigationOccurrence,
 } from '../core/navigation';
-import type { NavigationOccurrence } from '../core/navigation/types';
 import {
   getRiotV3DocumentContext,
   getRiotV3RootDocumentContext,
