@@ -92,6 +92,7 @@ export const riotV3LanguagePlugin: LanguagePlugin<URI> = {
 };
 
 export {
+  getRiotV3ReferenceOccurrences,
   getRiotV3ReferenceRanges,
   getRiotV3RenameEdits,
   getRiotV3RenameRange,

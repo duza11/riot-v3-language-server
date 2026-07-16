@@ -6,18 +6,18 @@ import {
   shouldPrefixTemplateIdentifier,
 } from '../template';
 import type { RiotV3Component, ScriptBlock } from '../types';
-
-export interface NestedPropertyOccurrence {
-  path: string[];
-  symbolKey?: string;
-  start: number;
-  end: number;
-  isDeclaration: boolean;
-}
+import type { NestedPropertyOccurrence } from './types';
 
 interface ResolvedPath {
   path: string[];
   segments: NestedPropertyOccurrence[];
+}
+
+function getOccurrencePriority(occurrence: NestedPropertyOccurrence): number {
+  if (occurrence.role === 'declaration') {
+    return 2;
+  }
+  return occurrence.role === 'write' ? 1 : 0;
 }
 
 export function getNestedPropertyOccurrences(
@@ -61,8 +61,12 @@ export function getNestedPropertyOccurrences(
   return [
     ...typedefNavigation.declarations,
     ...inlineTypeDeclarations,
-    ...scriptOccurrences.filter((occurrence) => occurrence.isDeclaration),
-    ...scriptOccurrences.filter((occurrence) => !occurrence.isDeclaration),
+    ...scriptOccurrences.filter(
+      (occurrence) => occurrence.role === 'declaration',
+    ),
+    ...scriptOccurrences.filter(
+      (occurrence) => occurrence.role !== 'declaration',
+    ),
     ...templateOccurrences,
   ];
 }
@@ -214,7 +218,7 @@ function addInlineTypeDeclarations(
       path,
       start: name.start,
       end: name.end,
-      isDeclaration: true,
+      role: 'declaration',
     });
     addInlineTypeDeclarations(
       member.type,
@@ -250,7 +254,10 @@ function getScriptOccurrences(
     occurrence.symbolKey ??= symbols.get(occurrence.path.join('.'));
     const key = `${occurrence.start}:${occurrence.end}:${occurrence.symbolKey ?? occurrence.path.join('.')}`;
     const existing = occurrences.get(key);
-    if (!existing || occurrence.isDeclaration) {
+    if (
+      !existing ||
+      getOccurrencePriority(occurrence) > getOccurrencePriority(existing)
+    ) {
       occurrences.set(key, occurrence);
     }
   };
@@ -285,7 +292,7 @@ function getScriptOccurrences(
                   path,
                   start: part.start,
                   end: part.end ?? part.start,
-                  isDeclaration: false,
+                  role: 'read' as const,
                 },
               ]),
         ],
@@ -307,7 +314,7 @@ function getScriptOccurrences(
           path,
           start: script.start + expression.name.getStart(sourceFile),
           end: script.start + expression.name.getEnd(),
-          isDeclaration: false,
+          role: 'read',
         },
       ],
     };
@@ -320,7 +327,7 @@ function getScriptOccurrences(
     for (const segment of resolved.segments) {
       add({
         ...segment,
-        isDeclaration: segment.end === declarationEnd,
+        role: segment.end === declarationEnd ? 'write' : segment.role,
       });
     }
   };
@@ -363,7 +370,7 @@ function getScriptOccurrences(
         path,
         start: name.start,
         end: name.end,
-        isDeclaration: true,
+        role: 'declaration',
       });
       if (ts.isPropertyAssignment(property)) {
         addObjectDeclarations(property.initializer, path);
@@ -398,7 +405,7 @@ function getScriptOccurrences(
         path,
         start: name.start,
         end: name.end,
-        isDeclaration: true,
+        role: 'declaration',
       });
       if (ts.isObjectBindingPattern(element.name)) {
         addBindingDeclarations(element.name, path);
@@ -511,7 +518,7 @@ function getTemplateOccurrences(
                 path,
                 start,
                 end: start + current.text.length,
-                isDeclaration: false,
+                role: 'read',
               },
             ],
           };
@@ -554,7 +561,7 @@ function getTemplateOccurrences(
                   path,
                   start: part.start,
                   end: part.end ?? part.start,
-                  isDeclaration: false,
+                  role: 'read' as const,
                 },
               ]),
         ],
@@ -580,7 +587,7 @@ function getTemplateOccurrences(
           path,
           start,
           end: start + current.name.text.length,
-          isDeclaration: false,
+          role: 'read',
         },
       ],
     };
@@ -687,7 +694,7 @@ function getTypedefNavigation(
             symbolKey,
             start: property.start,
             end: property.end,
-            isDeclaration: true,
+            role: 'declaration',
           });
           addTypeProperties(path, property.typeName, nextVisited);
         }

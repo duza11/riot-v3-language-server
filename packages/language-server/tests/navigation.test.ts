@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getRiotV3ReferenceOccurrences,
   getRiotV3ReferenceRanges,
   getRiotV3RenameEdits,
   getRiotV3RenameRange,
@@ -11,6 +12,54 @@ import {
   startsOf,
   textAtRanges,
 } from './helpers/virtualCode';
+
+describe('navigation occurrences', () => {
+  it('classifies root property declarations, reads, and writes', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ message }</p>
+  <script>
+    const self = this
+    self.message = 'Hello'
+    console.log(self.message)
+    self.message = 'Updated'
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ message }', 'message');
+
+    // Act
+    const occurrences = getRiotV3ReferenceOccurrences(source, position);
+
+    // Assert
+    expect(occurrences.map(({ role }) => role)).toEqual([
+      'declaration',
+      'read',
+      'write',
+      'read',
+    ]);
+  });
+
+  it('classifies each local definitions separately from reads', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p each={ item in items }>{ item.name }</p>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ item.name }', 'item');
+
+    // Act
+    const occurrences = getRiotV3ReferenceOccurrences(source, position);
+
+    // Assert
+    expect(occurrences.map(({ role }) => role)).toEqual([
+      'declaration',
+      'read',
+    ]);
+  });
+});
 
 describe('rename edits', () => {
   it('renames every script assignment from a template property reference', () => {
