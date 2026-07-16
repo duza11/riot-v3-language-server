@@ -125,22 +125,71 @@ export function scanInstanceProperties(
   return [...properties.values()];
 }
 
+export function scanInstancePropertyOccurrences(
+  text: string,
+  sourceOffset: number,
+  sharedAliases: string[] = [],
+): Pick<ScriptProperty, 'name' | 'sourceOffset'>[] {
+  const aliases = getCombinedThisAliases(text, sharedAliases);
+  const owners = ['this', ...aliases].sort(
+    (left, right) => right.length - left.length,
+  );
+  const occurrences: Pick<ScriptProperty, 'name' | 'sourceOffset'>[] = [];
+
+  for (let offset = 0; offset < text.length; ) {
+    const skipped = scanJavaScriptNonCode(text, offset);
+    if (skipped !== undefined) {
+      offset = skipped;
+      continue;
+    }
+    const owner = owners.find(
+      (candidate) =>
+        text.startsWith(candidate, offset) &&
+        !isIdentifierPart(text[offset - 1] ?? '') &&
+        !isIdentifierPart(text[offset + candidate.length] ?? ''),
+    );
+    if (!owner) {
+      offset++;
+      continue;
+    }
+    const chain = scanPropertyPath(text, offset + owner.length);
+    const name = chain?.path[0];
+    if (
+      chain &&
+      name !== undefined &&
+      name !== dynamicStringIndexProperty &&
+      !scriptReservedWords.has(name) &&
+      !riotV3TagInstanceMembers.has(name)
+    ) {
+      occurrences.push({
+        name,
+        sourceOffset: sourceOffset + chain.nameStart,
+      });
+    }
+    offset += owner.length;
+  }
+
+  return occurrences;
+}
+
 function scanInstancePropertyAssignments(
   text: string,
   sourceOffset: number,
   sharedAliases: string[] = [],
 ): ScriptPropertyAssignment[] {
-  const aliases = [...sharedAliases];
-  for (const alias of getThisAliases(text)) {
-    if (!aliases.includes(alias)) {
-      aliases.push(alias);
-    }
-  }
+  const aliases = getCombinedThisAliases(text, sharedAliases);
   const properties = scanThisPropertyAssignments(text, sourceOffset);
   for (const alias of aliases) {
     properties.push(...scanAliasPropertyAssignments(text, sourceOffset, alias));
   }
   return properties;
+}
+
+function getCombinedThisAliases(
+  text: string,
+  sharedAliases: string[],
+): string[] {
+  return [...new Set([...sharedAliases, ...getThisAliases(text)])];
 }
 
 export function scanRiotV3MethodProperties(
