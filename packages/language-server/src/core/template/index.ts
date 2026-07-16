@@ -10,8 +10,8 @@ import {
   scanJavaScriptNonCode,
   scanString,
   scanTemplateNonIdentifier,
-} from './scanners';
-import type { GeneratedSegment, TextRange } from './types';
+} from '../scanners';
+import type { GeneratedSegment, TextRange } from '../types';
 
 const riotV3ScriptContextSuffix = `
 }
