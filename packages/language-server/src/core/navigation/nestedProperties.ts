@@ -1,11 +1,11 @@
 import * as ts from 'typescript';
-import { getScriptProperties, getScriptThisAliases } from '../script';
+import type { RiotV3ComponentAnalysis } from '../analysis';
 import type { TemplateAnalysis, TemplateExpression } from '../template';
 import {
   getResolvedEachLocalName,
   shouldPrefixTemplateIdentifier,
 } from '../template';
-import type { RiotV3Component, ScriptBlock } from '../types';
+import type { ScriptBlock, ScriptProperty } from '../types';
 import type { NestedPropertyOccurrence } from './types';
 
 interface ResolvedPath {
@@ -22,17 +22,17 @@ function getOccurrencePriority(occurrence: NestedPropertyOccurrence): number {
 
 export function getNestedPropertyOccurrences(
   snapshot: ts.IScriptSnapshot,
-  component: RiotV3Component,
-  templateAnalysis: TemplateAnalysis,
+  componentAnalysis: RiotV3ComponentAnalysis,
 ): NestedPropertyOccurrence[] {
-  const rootProperties = getScriptProperties(snapshot, component.scripts);
+  const { component, script, template: templateAnalysis } = componentAnalysis;
+  const rootProperties = script.properties;
   const rootNames = new Set(rootProperties.map((property) => property.name));
   const typedefNavigation = getTypedefNavigation(
     snapshot,
     component.scripts,
     rootProperties,
   );
-  const aliases = new Set(getScriptThisAliases(snapshot, component.scripts));
+  const aliases = new Set(script.aliases);
   const inlineTypeDeclarations = getInlineTypeDeclarations(
     snapshot,
     component.scripts,
@@ -74,7 +74,7 @@ export function getNestedPropertyOccurrences(
 function getInlineTypeDeclarations(
   snapshot: ts.IScriptSnapshot,
   scripts: ScriptBlock[],
-  rootProperties: ReturnType<typeof getScriptProperties>,
+  rootProperties: ScriptProperty[],
   aliases: Set<string>,
 ): NestedPropertyOccurrence[] {
   const declarations: NestedPropertyOccurrence[] = [];
@@ -632,7 +632,7 @@ interface TypedefDefinition {
 function getTypedefNavigation(
   snapshot: ts.IScriptSnapshot,
   scripts: ScriptBlock[],
-  rootProperties: ReturnType<typeof getScriptProperties>,
+  rootProperties: ScriptProperty[],
 ): {
   declarations: NestedPropertyOccurrence[];
   symbols: Map<string, string>;

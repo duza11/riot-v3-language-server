@@ -1,11 +1,10 @@
 import type * as ts from 'typescript';
-import * as html from 'vscode-html-languageservice';
-import { getRiotV3Components, getTemplateIgnoredRanges } from '../components';
+import {
+  analyzeRiotV3Document,
+  type RiotV3DocumentAnalysis,
+} from '../analysis';
 import { isIdentifierPart, isIdentifierStart } from '../scanners';
-import { createTemplateAnalysis } from '../template';
 import type { IdentifierRange, NavigationContext } from './types';
-
-const htmlLs = html.getLanguageService();
 
 function createScriptSnapshot(sourceText: string): ts.IScriptSnapshot {
   return {
@@ -19,43 +18,40 @@ export function getNavigationContext(
   sourceText: string,
   position: number,
 ): NavigationContext | undefined {
-  const identifier = getIdentifierAtOffset(sourceText, position);
+  return getNavigationContextForAnalysis(
+    analyzeRiotV3Document(createScriptSnapshot(sourceText)),
+    position,
+  );
+}
+
+export function getNavigationContextForAnalysis(
+  analysis: RiotV3DocumentAnalysis,
+  position: number,
+): NavigationContext | undefined {
+  const identifier = getIdentifierAtOffset(analysis.sourceText, position);
   if (!identifier) {
     return;
   }
-
-  const snapshot = createScriptSnapshot(sourceText);
-  const htmlDocument = htmlLs.parseHTMLDocument(
-    html.TextDocument.create('', 'html', 0, sourceText),
-  );
-  const components = getRiotV3Components(sourceText, htmlDocument);
-  const component = getComponentAtOffset(components, position);
-  if (!component) {
+  const componentAnalysis = getComponentAtOffset(analysis.components, position);
+  if (!componentAnalysis) {
     return;
   }
-
   return {
     identifier,
-    snapshot,
-    component,
-    templateAnalysis: createTemplateAnalysis(
-      snapshot,
-      component.nodes,
-      getTemplateIgnoredRanges(component),
-      {
-        start: component.start,
-        end: component.end,
-      },
-    ),
+    analysis,
+    componentAnalysis,
+    snapshot: analysis.snapshot,
+    component: componentAnalysis.component,
+    templateAnalysis: componentAnalysis.template,
   };
 }
 
 function getComponentAtOffset(
-  components: NavigationContext['component'][],
+  components: NavigationContext['componentAnalysis'][],
   offset: number,
-): NavigationContext['component'] | undefined {
+): NavigationContext['componentAnalysis'] | undefined {
   return components.find(
-    (component) => offset >= component.start && offset <= component.end,
+    ({ component }) => offset >= component.start && offset <= component.end,
   );
 }
 

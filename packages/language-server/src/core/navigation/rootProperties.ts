@@ -1,4 +1,5 @@
 import type * as ts from 'typescript';
+import type { RiotV3ScriptAnalysis } from '../analysis';
 import {
   findPreviousNonWhitespace,
   isIdentifierPart,
@@ -6,8 +7,6 @@ import {
   scanTemplateNonIdentifier,
 } from '../scanners';
 import {
-  getScriptProperties,
-  getScriptThisAliases,
   scanInstancePropertyOccurrences,
   scanRiotV3MethodProperties,
 } from '../script';
@@ -23,9 +22,9 @@ export function isRiotPropertyRenameSource(
   sourceText: string,
   identifier: IdentifierRange,
   scriptProperties: ScriptProperty[],
-  snapshot: ts.IScriptSnapshot,
   component: RiotV3Component,
   templateAnalysis: TemplateAnalysis,
+  aliases: string[],
 ): boolean {
   if (!scriptProperties.some((property) => property.name === identifier.name)) {
     return false;
@@ -44,8 +43,8 @@ export function isRiotPropertyRenameSource(
     isInstancePropertyReference(
       sourceText,
       identifier.start,
-      snapshot,
       component.scripts,
+      aliases,
     )
   ) {
     return true;
@@ -63,8 +62,8 @@ export function isRiotPropertyRenameSource(
 function isInstancePropertyReference(
   sourceText: string,
   identifierStart: number,
-  snapshot: ts.IScriptSnapshot,
   scripts: ScriptBlock[],
+  aliases: string[],
 ): boolean {
   const qualifier = getPropertyQualifier(sourceText, identifierStart);
   if (qualifier === 'this') {
@@ -80,7 +79,6 @@ function isInstancePropertyReference(
   if (!script) {
     return false;
   }
-  const aliases = getScriptThisAliases(snapshot, scripts);
   return aliases.includes(qualifier);
 }
 
@@ -141,11 +139,13 @@ export function getRiotPropertyOccurrences(
   component: RiotV3Component,
   expressions: TemplateExpression[],
   name: string,
+  scriptAnalysis: RiotV3ScriptAnalysis,
 ): NavigationOccurrence[] {
   const occurrences = getScriptNavigationOccurrences(
     snapshot,
     component.scripts,
     name,
+    scriptAnalysis,
   );
   for (const expression of expressions) {
     for (const offset of getTemplateRenameOffsets(expression, name)) {
@@ -163,11 +163,11 @@ function getScriptNavigationOccurrences(
   snapshot: ts.IScriptSnapshot,
   scripts: ScriptBlock[],
   name: string,
+  scriptAnalysis: RiotV3ScriptAnalysis,
 ): NavigationOccurrence[] {
   const occurrences: NavigationOccurrence[] = [];
-  const aliases = getScriptThisAliases(snapshot, scripts);
   const declarationOffsets = new Set(
-    getScriptProperties(snapshot, scripts)
+    scriptAnalysis.properties
       .filter((property) => property.name === name)
       .map((property) => property.sourceOffset),
   );
@@ -182,7 +182,7 @@ function getScriptNavigationOccurrences(
     for (const property of scanInstancePropertyOccurrences(
       text,
       script.start,
-      aliases,
+      scriptAnalysis.aliases,
     )) {
       if (property.name === name) {
         addOccurrence(occurrences, {

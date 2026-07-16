@@ -1,10 +1,13 @@
-import { getScriptProperties } from '../script';
+import type { RiotV3DocumentAnalysis } from '../analysis';
 import type {
   RiotV3ReferenceRange,
   RiotV3RenameRange,
   RiotV3RenameTextEdit,
 } from '../types';
-import { getNavigationContext } from './context';
+import {
+  getNavigationContext,
+  getNavigationContextForAnalysis,
+} from './context';
 import {
   getEachLocalOccurrences,
   getEachLocalRenameTarget,
@@ -25,6 +28,26 @@ export function getRiotV3RenameEdits(
   if (!context) {
     return [];
   }
+  return getRenameEditsForContext(sourceText, context, newName);
+}
+
+export function getRiotV3RenameEditsForAnalysis(
+  analysis: RiotV3DocumentAnalysis,
+  position: number,
+  newName: string,
+): RiotV3RenameTextEdit[] {
+  const context = getNavigationContextForAnalysis(analysis, position);
+  if (!context) {
+    return [];
+  }
+  return getRenameEditsForContext(analysis.sourceText, context, newName);
+}
+
+function getRenameEditsForContext(
+  sourceText: string,
+  context: NavigationContext,
+  newName: string,
+): RiotV3RenameTextEdit[] {
   return (getReferenceOccurrences(sourceText, context) ?? []).map(
     ({ start, end }) => ({
       start,
@@ -43,6 +66,17 @@ export function getRiotV3ReferenceOccurrences(
     return [];
   }
   return getReferenceOccurrences(sourceText, context) ?? [];
+}
+
+export function getRiotV3ReferenceOccurrencesForAnalysis(
+  analysis: RiotV3DocumentAnalysis,
+  position: number,
+): NavigationOccurrence[] {
+  const context = getNavigationContextForAnalysis(analysis, position);
+  if (!context) {
+    return [];
+  }
+  return getReferenceOccurrences(analysis.sourceText, context) ?? [];
 }
 
 export function getRiotV3ReferenceRanges(
@@ -65,6 +99,26 @@ export function getRiotV3RenameRange(
   if (!context || !getReferenceOccurrences(sourceText, context)?.length) {
     return;
   }
+  return getRenameRangeForContext(context);
+}
+
+export function getRiotV3RenameRangeForAnalysis(
+  analysis: RiotV3DocumentAnalysis,
+  position: number,
+): RiotV3RenameRange | undefined {
+  const context = getNavigationContextForAnalysis(analysis, position);
+  if (
+    !context ||
+    !getReferenceOccurrences(analysis.sourceText, context)?.length
+  ) {
+    return;
+  }
+  return getRenameRangeForContext(context);
+}
+
+function getRenameRangeForContext(
+  context: NavigationContext,
+): RiotV3RenameRange {
   return {
     start: context.identifier.start,
     end: context.identifier.end,
@@ -90,15 +144,15 @@ function getReferenceOccurrences(
     return nestedOccurrences;
   }
 
-  const scriptProperties = getScriptProperties(snapshot, component.scripts);
+  const scriptProperties = context.componentAnalysis.script.properties;
   if (
     !isRiotPropertyRenameSource(
       sourceText,
       identifier,
       scriptProperties,
-      snapshot,
       component,
       templateAnalysis,
+      context.componentAnalysis.script.aliases,
     )
   ) {
     return;
@@ -108,6 +162,7 @@ function getReferenceOccurrences(
     component,
     templateAnalysis.expressions,
     identifier.name,
+    context.componentAnalysis.script,
   );
 }
 
@@ -116,8 +171,7 @@ function getNestedPropertyReferenceOccurrences(
 ): NavigationOccurrence[] | undefined {
   const occurrences = getNestedPropertyOccurrences(
     context.snapshot,
-    context.component,
-    context.templateAnalysis,
+    context.componentAnalysis,
   );
   const target = occurrences.find(
     (occurrence) =>
