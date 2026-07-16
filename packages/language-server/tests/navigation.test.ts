@@ -13,6 +13,37 @@ import {
 } from './helpers/virtualCode';
 
 describe('rename edits', () => {
+  it('renames every script assignment from a template property reference', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ message }</p>
+  <button each={ text in texts } onclick={ handleClick }>{ text }</button>
+  <script>
+    const self = this
+    self.texts = ['Hello', 'World']
+    self.message = null
+
+    handleClick(e) {
+      self.message = e.item.text
+    }
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ message }', 'message');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'content');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, 'self.message = null', 'message'),
+      offsetOf(source, 'self.message = e.item.text', 'message'),
+      offsetOf(source, '{ message }', 'message'),
+    ]);
+    expectAllNewText(edits, 'content');
+  });
+
   it('renames methods declared in component state object literals', () => {
     // Arrange
     const source = `
@@ -716,6 +747,92 @@ describe('rename edits', () => {
 });
 
 describe('reference ranges', () => {
+  it('finds every script assignment from a template property reference', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ message }</p>
+  <button each={ text in texts } onclick={ handleClick }>{ text }</button>
+  <script>
+    const self = this
+    self.texts = ['Hello', 'World']
+    self.message = null
+
+    handleClick(e) {
+      self.message = e.item.text
+    }
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ message }', 'message');
+
+    // Act
+    const references = getRiotV3ReferenceRanges(source, position);
+
+    // Assert
+    expect(startsOf(references)).toEqual([
+      offsetOf(source, 'self.message = null', 'message'),
+      offsetOf(source, 'self.message = e.item.text', 'message'),
+      offsetOf(source, '{ message }', 'message'),
+    ]);
+  });
+
+  it('finds every property reference from a script method assignment', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ message }</p>
+  <script>
+    const self = this
+    self.message = null
+
+    handleClick(e) {
+      self.message = e.item.text
+    }
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, 'self.message = e.item.text', 'message');
+
+    // Act
+    const references = getRiotV3ReferenceRanges(source, position);
+
+    // Assert
+    expect(startsOf(references)).toEqual([
+      offsetOf(source, 'self.message = null', 'message'),
+      offsetOf(source, 'self.message = e.item.text', 'message'),
+      offsetOf(source, '{ message }', 'message'),
+    ]);
+  });
+
+  it('finds script property reads from a template property reference', () => {
+    // Arrange
+    const source = `
+<demo-widget>
+  <p>{ message }</p>
+  <script>
+    const self = this
+    self.message = 'Hello'
+
+    logMessage() {
+      console.log(self.message)
+    }
+  </script>
+</demo-widget>
+`;
+    const position = offsetOf(source, '{ message }', 'message');
+
+    // Act
+    const references = getRiotV3ReferenceRanges(source, position);
+
+    // Assert
+    expect(startsOf(references)).toEqual([
+      offsetOf(source, "self.message = 'Hello'", 'message'),
+      offsetOf(source, 'console.log(self.message)', 'message'),
+      offsetOf(source, '{ message }', 'message'),
+    ]);
+  });
+
   it('finds nested object property references across script and templates', () => {
     // Arrange
     const source = `

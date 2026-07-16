@@ -11,7 +11,7 @@ import {
 import {
   getScriptProperties,
   getScriptThisAliases,
-  scanInstanceProperties,
+  scanInstancePropertyOccurrences,
   scanRiotV3MethodProperties,
 } from './script';
 import {
@@ -449,7 +449,7 @@ function getRiotPropertyReferenceOffsets(
   name: string,
 ): number[] {
   const offsets: number[] = [];
-  for (const offset of getScriptRenameOffsets(
+  for (const offset of getScriptNavigationOffsets(
     snapshot,
     component.scripts,
     name,
@@ -532,7 +532,7 @@ function getEachLocalRenameOffsets(
   return [...new Set(offsets)];
 }
 
-function getScriptRenameOffsets(
+function getScriptNavigationOffsets(
   snapshot: ts.IScriptSnapshot,
   scripts: ScriptBlock[],
   name: string,
@@ -542,7 +542,7 @@ function getScriptRenameOffsets(
   for (const script of scripts) {
     const text = snapshot.getText(script.start, script.end);
     for (const property of [
-      ...scanInstanceProperties(text, script.start, aliases),
+      ...scanInstancePropertyOccurrences(text, script.start, aliases),
       ...scanRiotV3MethodProperties(text, script.start),
     ]) {
       if (property.name === name && !offsets.includes(property.sourceOffset)) {
