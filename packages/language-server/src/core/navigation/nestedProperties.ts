@@ -1,11 +1,11 @@
 import * as ts from 'typescript';
-import { getScriptProperties, getScriptThisAliases } from './script';
-import type { TemplateAnalysis, TemplateExpression } from './template';
+import { getScriptProperties, getScriptThisAliases } from '../script';
+import type { TemplateAnalysis, TemplateExpression } from '../template';
 import {
   getResolvedEachLocalName,
   shouldPrefixTemplateIdentifier,
-} from './template';
-import type { RiotV3Component, ScriptBlock } from './types';
+} from '../template';
+import type { RiotV3Component, ScriptBlock } from '../types';
 
 export interface NestedPropertyOccurrence {
   path: string[];

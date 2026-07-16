@@ -1,19 +1,19 @@
 import type * as ts from 'typescript';
 import * as html from 'vscode-html-languageservice';
-import { getRiotV3Components, getTemplateIgnoredRanges } from './components';
+import { getRiotV3Components, getTemplateIgnoredRanges } from '../components';
 import { getNestedPropertyOccurrences } from './nestedProperties';
 import {
   findPreviousNonWhitespace,
   isIdentifierPart,
   isIdentifierStart,
   scanTemplateNonIdentifier,
-} from './scanners';
+} from '../scanners';
 import {
   getScriptProperties,
   getScriptThisAliases,
   scanInstancePropertyOccurrences,
   scanRiotV3MethodProperties,
-} from './script';
+} from '../script';
 import {
   createTemplateAnalysis,
   type EachLocalName,
@@ -22,7 +22,7 @@ import {
   shouldPrefixTemplateIdentifier,
   type TemplateAnalysis,
   type TemplateExpression,
-} from './template';
+} from '../template';
 import type {
   RiotV3Component,
   RiotV3ReferenceRange,
@@ -30,7 +30,7 @@ import type {
   RiotV3RenameTextEdit,
   ScriptBlock,
   ScriptProperty,
-} from './types';
+} from '../types';
 
 const htmlLs = html.getLanguageService();
 function createScriptSnapshot(sourceText: string): ts.IScriptSnapshot {
