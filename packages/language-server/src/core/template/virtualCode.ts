@@ -19,17 +19,17 @@ const riotV3ScriptContextSuffix = `
 export function createTemplateVirtualCode(
   id: string,
   expressions: TemplateExpression[],
-  typeNames: { templateInstance: string; eachContext: string },
+  typeNames: { templateContext: string; eachTemplateContext: string },
 ): VirtualCode {
   const segments: GeneratedSegment[] = [
-    { text: getTemplateContextPrefix(typeNames.templateInstance) },
+    { text: getTemplateContextPrefix(typeNames.templateContext) },
   ];
   for (const expression of expressions) {
     const eachContext =
       expression.eachDepth === undefined
         ? undefined
         : getNestedEachContextTypeName(
-            typeNames.eachContext,
+            typeNames.eachTemplateContext,
             expression.eachDepth,
           );
     segments.push({

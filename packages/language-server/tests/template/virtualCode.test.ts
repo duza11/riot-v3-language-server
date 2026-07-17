@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getTemplateIdentifierQuickInfo } from '../helpers/typescript';
+import {
+  getScriptIdentifierType,
+  getTemplateIdentifierQuickInfo,
+  getTemplateIdentifierType,
+} from '../helpers/typescript';
 import {
   createVirtualCode,
   expectTemplateIdentifierPrefixNotMapped,
@@ -8,7 +12,113 @@ import {
   offsetOf,
 } from '../helpers/virtualCode';
 
+const projectGlobalFiles = {
+  '/workspace/global.d.ts': `
+    declare global {
+      interface JQueryStatic { version: string }
+      var $: JQueryStatic
+    }
+    export {}
+  `,
+};
+
 describe('template virtual code', () => {
+  it('resolves project global types consistently in scripts and templates', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ Object.keys($) }</p>
+    <script>
+      console.log($)
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const scriptType = getScriptIdentifierType(
+      code,
+      'console.log($)',
+      '$',
+      projectGlobalFiles,
+    );
+    const templateType = getTemplateIdentifierType(
+      code,
+      'Object.keys(this.$)',
+      '$',
+      projectGlobalFiles,
+    );
+
+    // Assert
+    expect(scriptType).toBe('JQueryStatic');
+    expect(templateType).toBe(scriptType);
+  });
+
+  it('prefers component state over a same-named project global', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ $ }</p>
+    <script>
+      this.$ = 42
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const templateType = getTemplateIdentifierType(
+      code,
+      'void (this.$)',
+      '$',
+      projectGlobalFiles,
+    );
+
+    // Assert
+    expect(templateType).toBe('number');
+  });
+
+  it('resolves project global types inside each scopes', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p each={ item in items }>{ $.version }: { item }</p>
+    <script>
+      this.items = ['first']
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const templateType = getTemplateIdentifierType(
+      code,
+      'void (this.$.version)',
+      '$',
+      projectGlobalFiles,
+    );
+
+    // Assert
+    expect(templateType).toBe('JQueryStatic');
+  });
+
+  it('keeps unknown dynamic template properties as any', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ dynamicValue }</p>
+  </demo-widget>
+  `);
+
+    // Act
+    const templateType = getTemplateIdentifierType(
+      code,
+      'void (this.dynamicValue)',
+      'dynamicValue',
+      projectGlobalFiles,
+    );
+
+    // Assert
+    expect(templateType).toBe('any');
+  });
+
   it('shows short component state names in template quick info', () => {
     const code = createVirtualCode(
       `
