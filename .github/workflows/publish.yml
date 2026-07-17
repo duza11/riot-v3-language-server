@@ -74,8 +74,8 @@ jobs:
             ${{ env.VSIX }}
             checksums.txt
 
-  publish-npm:
-    name: Publish npm Package
+  stage-npm:
+    name: Stage npm Package
     runs-on: ubuntu-latest
     needs: package
     environment: release
@@ -92,13 +92,11 @@ jobs:
       - name: Locate artifacts
         run: |
           npm_tarball="$(find release-artifacts -maxdepth 1 -name '*.tgz' -type f | head -n 1)"
-          vsix="$(find release-artifacts -maxdepth 1 -name '*.vsix' -type f | head -n 1)"
-          if [ -z "$npm_tarball" ] || [ -z "$vsix" ]; then
-            echo "Release artifacts were not found." >&2
+          if [ -z "$npm_tarball" ]; then
+            echo "npm package artifact was not found." >&2
             exit 1
           fi
           echo "NPM_TARBALL=$npm_tarball" >> "$GITHUB_ENV"
-          echo "VSIX=$vsix" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -106,8 +104,13 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Publish npm package
-        run: npm publish "$NPM_TARBALL" --provenance --access public
+      - name: Setup npm CLI
+        run: |
+          npm install --global npm@11.18.0 --ignore-scripts
+          npm --version
+
+      - name: Stage npm package
+        run: npm stage publish "$NPM_TARBALL"
 
   publish-vscode:
     name: Publish VS Code Extension
@@ -148,7 +151,7 @@ jobs:
     name: Attach Artifacts
     runs-on: ubuntu-latest
     needs:
-      - publish-npm
+      - stage-npm
       - publish-vscode
     permissions:
       contents: write
