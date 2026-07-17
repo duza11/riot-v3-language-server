@@ -18,7 +18,7 @@ describe('each template expressions', () => {
     const template = getTemplateText(code);
 
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachContext_0)",
+      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
     );
     expect(template).toContain(
       'const __riot_v3_each_collection_0 = this.items;',
@@ -45,7 +45,7 @@ describe('each template expressions', () => {
     const template = getTemplateText(code);
 
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachContext_0)",
+      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
     );
     expect(template).toContain(
       'const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_0>;',
@@ -396,7 +396,7 @@ describe('each template expressions', () => {
 
     expect(template).toContain('this.items');
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachContext_0)",
+      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
     );
     expect(template).toContain('this.name');
     expect(template).toContain('this.title');
@@ -425,10 +425,10 @@ describe('each template expressions', () => {
 
     expect(template).toContain('this.groups');
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachContext_0)",
+      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
     );
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachContext_0_1)",
+      "function(this: import('riot-v3:anonymous').EachTemplateContext_0_1)",
     );
     expect(template).toContain('group.items');
     expect(template).toContain('group.name');

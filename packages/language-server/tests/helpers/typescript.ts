@@ -6,6 +6,7 @@ export function getTemplateIdentifierType(
   code: RiotV3VirtualCode,
   marker: string,
   identifier: string,
+  projectFiles: Record<string, string> = {},
 ): string {
   return getEmbeddedIdentifierType(
     code,
@@ -14,6 +15,7 @@ export function getTemplateIdentifierType(
     ts.ScriptKind.TS,
     marker,
     identifier,
+    projectFiles,
   );
 }
 
@@ -21,6 +23,7 @@ export function getScriptIdentifierType(
   code: RiotV3VirtualCode,
   marker: string,
   identifier: string,
+  projectFiles: Record<string, string> = {},
 ): string {
   return getEmbeddedIdentifierType(
     code,
@@ -29,6 +32,7 @@ export function getScriptIdentifierType(
     ts.ScriptKind.JS,
     marker,
     identifier,
+    projectFiles,
   );
 }
 
@@ -53,6 +57,7 @@ function getEmbeddedIdentifierType(
   scriptKind: ts.ScriptKind,
   marker: string,
   identifier: string,
+  projectFiles: Record<string, string>,
 ): string {
   const text = getEmbeddedText(code, embeddedCodeId);
   const markerOffset = text.indexOf(marker);
@@ -84,6 +89,14 @@ function getEmbeddedIdentifierType(
       ts.ScriptTarget.Latest,
       true,
       scriptKind,
+    ),
+    ...Object.entries(projectFiles).map(([projectFileName, content]) =>
+      ts.createSourceFile(
+        projectFileName,
+        content,
+        ts.ScriptTarget.Latest,
+        true,
+      ),
     ),
   ];
   const program = createVirtualProgram(sourceFiles, options);

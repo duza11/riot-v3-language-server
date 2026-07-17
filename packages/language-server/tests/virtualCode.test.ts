@@ -75,10 +75,10 @@ describe('RiotV3VirtualCode embedded codes', () => {
     const secondTemplate = getTemplateText(code, 'template_1');
 
     expect(firstTemplate).toMatch(
-      /this: import\('riot-v3:[^']+'\)\.TemplateInstance_0/,
+      /this: import\('riot-v3:[^']+'\)\.TemplateContext_0/,
     );
     expect(secondTemplate).toMatch(
-      /this: import\('riot-v3:[^']+'\)\.TemplateInstance_1/,
+      /this: import\('riot-v3:[^']+'\)\.TemplateContext_1/,
     );
   });
 

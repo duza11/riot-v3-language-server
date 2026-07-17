@@ -144,13 +144,13 @@ function* getRiotV3EmbeddedCodes(
         componentTypesModuleName,
         componentTypeNames.tagInstance,
       ),
-      templateInstance: getRiotV3ComponentTypeReference(
+      templateContext: getRiotV3ComponentTypeReference(
         componentTypesModuleName,
-        componentTypeNames.templateInstance,
+        componentTypeNames.templateContext,
       ),
-      eachContext: getRiotV3ComponentTypeReference(
+      eachTemplateContext: getRiotV3ComponentTypeReference(
         componentTypesModuleName,
-        componentTypeNames.eachContext,
+        componentTypeNames.eachTemplateContext,
       ),
     };
 

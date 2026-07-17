@@ -66,7 +66,7 @@ describe('class shorthand template expressions', () => {
     const template = getTemplateText(code);
 
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachContext_0)",
+      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
     );
     expect(template).toContain('item.active');
     expect(template).toContain('item.name');
