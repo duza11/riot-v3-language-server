@@ -117,7 +117,7 @@ export function parseJSDocType(comment: string): string | undefined {
   return comment.slice(typeStart + 1, typeEnd - 1).trim() || undefined;
 }
 
-function parseRiotMethodParameters(
+export function parseRiotMethodParameters(
   text: string,
   nameEnd: number,
 ): string[] | undefined {
@@ -185,7 +185,7 @@ function getFunctionParameterName(text: string): string | undefined {
   return isValidIdentifier(name) ? name : undefined;
 }
 
-function parseJSDocFunctionTypes(jsDoc: string): {
+export function parseJSDocFunctionTypes(jsDoc: string): {
   params: Map<string, string>;
   returnType?: string;
 } {

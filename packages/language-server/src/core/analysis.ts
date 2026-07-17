@@ -1,7 +1,9 @@
 import type * as ts from 'typescript';
 import * as html from 'vscode-html-languageservice';
 import { getRiotV3Components, getTemplateIgnoredRanges } from './components';
+import type { ScriptJSDocTypedBinding } from './script';
 import {
+  getScriptJSDocTypedBindings,
   getScriptJSDocTypedefs,
   getScriptProperties,
   getScriptThisAliases,
@@ -15,6 +17,7 @@ export interface RiotV3ScriptAnalysis {
   properties: ScriptProperty[];
   aliases: string[];
   jsDocTypedefs: JSDocTypedef[];
+  jsDocTypedBindings: ScriptJSDocTypedBinding[];
 }
 
 export interface RiotV3ComponentAnalysis {
@@ -46,6 +49,10 @@ export function analyzeRiotV3Document(
         properties: getScriptProperties(snapshot, component.scripts),
         aliases: getScriptThisAliases(snapshot, component.scripts),
         jsDocTypedefs: getScriptJSDocTypedefs(snapshot, component.scripts),
+        jsDocTypedBindings: getScriptJSDocTypedBindings(
+          snapshot,
+          component.scripts,
+        ),
       },
       template: createTemplateAnalysis(
         snapshot,

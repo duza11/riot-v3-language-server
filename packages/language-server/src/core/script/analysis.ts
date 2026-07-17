@@ -7,8 +7,14 @@ import {
   scanJavaScriptNonCode,
 } from '../scanners';
 import type { ScriptBlock, ScriptProperty } from '../types';
-import { findPrecedingJSDoc, inferJSDocRiotMethodType } from './jsdoc';
 import {
+  findPrecedingJSDoc,
+  inferJSDocRiotMethodType,
+  parseJSDocFunctionTypes,
+  parseRiotMethodParameters,
+} from './jsdoc';
+import {
+  type RiotV3MethodDefinition,
   riotV3TagInstanceMembers,
   scanFunctionLikeEnd,
   scanRiotV3MethodDefinition,
@@ -21,7 +27,10 @@ import {
   isValidIdentifier,
   mergeScriptProperty,
 } from './typeInference';
-import type { ScriptPropertyAssignment } from './types';
+import type {
+  ScriptJSDocTypedBinding,
+  ScriptPropertyAssignment,
+} from './types';
 
 const dynamicStringIndexProperty = '[key: string]';
 
@@ -59,6 +68,37 @@ export function getScriptThisAliases(
     }
   }
   return aliases;
+}
+
+export function getScriptJSDocTypedBindings(
+  snapshot: ts.IScriptSnapshot,
+  scripts: ScriptBlock[],
+): ScriptJSDocTypedBinding[] {
+  return scripts.flatMap((script) => {
+    const text = snapshot.getText(script.start, script.end);
+    const bindings: ScriptJSDocTypedBinding[] = [];
+    for (const method of scanRiotV3Methods(text)) {
+      const jsDoc = findPrecedingJSDoc(text, method.nameStart);
+      if (!jsDoc) {
+        continue;
+      }
+      const parameterNames = new Set(
+        parseRiotMethodParameters(text, method.nameEnd) ?? [],
+      );
+      for (const [name, typeName] of parseJSDocFunctionTypes(jsDoc).params) {
+        if (!parameterNames.has(name)) {
+          continue;
+        }
+        bindings.push({
+          name,
+          typeName,
+          scopeStart: script.start + method.bodyStart,
+          scopeEnd: script.start + method.bodyEnd,
+        });
+      }
+    }
+    return bindings;
+  });
 }
 
 function scanInstanceProperties(
@@ -153,6 +193,29 @@ export function scanRiotV3MethodProperties(
   sourceOffset: number,
 ): ScriptProperty[] {
   const properties: ScriptProperty[] = [];
+  for (const method of scanRiotV3Methods(text)) {
+    const name = text.slice(method.nameStart, method.nameEnd);
+    if (riotV3TagInstanceMembers.has(name)) {
+      continue;
+    }
+    const jsDocType = inferJSDocRiotMethodType(
+      text,
+      method.nameEnd,
+      findPrecedingJSDoc(text, method.nameStart),
+    );
+    properties.push({
+      name,
+      sourceOffset: sourceOffset + method.nameStart,
+      typeName: jsDocType ?? '(...args: any[]) => any',
+      assignmentKind: 'replacement',
+      typeOrigin: jsDocType ? 'explicit' : 'inferred',
+    });
+  }
+  return properties;
+}
+
+function scanRiotV3Methods(text: string): RiotV3MethodDefinition[] {
+  const methods: RiotV3MethodDefinition[] = [];
   let offset = 0;
   let parenDepth = 0;
   let bracketDepth = 0;
@@ -178,21 +241,7 @@ export function scanRiotV3MethodProperties(
       }
       const method = scanRiotV3MethodDefinition(text, offset);
       if (method) {
-        const name = text.slice(method.nameStart, method.nameEnd);
-        if (!riotV3TagInstanceMembers.has(name)) {
-          const jsDocType = inferJSDocRiotMethodType(
-            text,
-            method.nameEnd,
-            findPrecedingJSDoc(text, method.nameStart),
-          );
-          properties.push({
-            name,
-            sourceOffset: sourceOffset + method.nameStart,
-            typeName: jsDocType ?? '(...args: any[]) => any',
-            assignmentKind: 'replacement',
-            typeOrigin: jsDocType ? 'explicit' : 'inferred',
-          });
-        }
+        methods.push(method);
         offset = method.bodyEnd;
         continue;
       }
@@ -215,8 +264,7 @@ export function scanRiotV3MethodProperties(
     }
     offset++;
   }
-
-  return properties;
+  return methods;
 }
 
 export function getComponentScriptLanguageId(
