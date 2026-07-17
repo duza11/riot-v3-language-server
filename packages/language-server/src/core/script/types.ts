@@ -11,3 +11,10 @@ export interface AssignedPropertyType {
   typeName: string;
   typeOrigin: ScriptProperty['typeOrigin'];
 }
+
+export interface ScriptJSDocTypedBinding {
+  name: string;
+  typeName: string;
+  scopeStart: number;
+  scopeEnd: number;
+}

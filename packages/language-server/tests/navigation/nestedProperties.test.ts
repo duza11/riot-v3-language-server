@@ -5,7 +5,115 @@ import {
 } from '../../src/languagePlugin';
 import { expectAllNewText, offsetOf, startsOf } from '../helpers/virtualCode';
 
+const typedNestedPropertySource = `
+  <test-widget>
+    <virtual each={ product in states.products }>
+      <p>{ product.name }</p>
+      <button onclick={ () => handleClick(product) }>Button</button>
+    </virtual>
+    <script>
+      /**
+       * @typedef {object} Product
+       * @property {string} name
+       * @property {number} price
+       */
+      const self = this
+      self.states = {
+        /** @type {Product[]} */
+        products: [{ name: 'productA', price: 1000 }],
+      }
+      /** @param {Product} product */
+      handleClick(product) {
+        console.log(product.name)
+      }
+    </script>
+  </test-widget>
+`;
+
+const typedNestedPropertyStarts = [
+  offsetOf(typedNestedPropertySource, '@property {string} name', 'name'),
+  offsetOf(typedNestedPropertySource, "name: 'productA'", 'name'),
+  offsetOf(typedNestedPropertySource, 'console.log(product.name)', 'name'),
+  offsetOf(typedNestedPropertySource, '{ product.name }', 'name'),
+];
+
 describe('nested property navigation', () => {
+  it.each([
+    ['the JSDoc declaration', '@property {string} name'],
+    ['the object literal declaration', "name: 'productA'"],
+    ['the script parameter reference', 'console.log(product.name)'],
+    ['the each local reference', '{ product.name }'],
+  ])('renames a typed nested property from %s', (_label, marker) => {
+    // Arrange
+    const position = offsetOf(typedNestedPropertySource, marker, 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(
+      typedNestedPropertySource,
+      position,
+      'label',
+    );
+
+    // Assert
+    expect(startsOf(edits)).toEqual(typedNestedPropertyStarts);
+  });
+
+  it('finds every reference to a typed nested property', () => {
+    // Arrange
+    const position = offsetOf(
+      typedNestedPropertySource,
+      'console.log(product.name)',
+      'name',
+    );
+
+    // Act
+    const references = getRiotV3ReferenceRanges(
+      typedNestedPropertySource,
+      position,
+    );
+
+    // Assert
+    expect(startsOf(references)).toEqual(typedNestedPropertyStarts);
+  });
+
+  it('does not combine same-named properties from different JSDoc types', () => {
+    // Arrange
+    const source = `
+  <test-widget>
+    <p each={ product in states.products }>{ product.name }</p>
+    <p each={ category in states.categories }>{ category.name }</p>
+    <script>
+      /**
+       * @typedef {object} Product
+       * @property {string} name
+       */
+      /**
+       * @typedef {object} Category
+       * @property {string} name
+       */
+      const self = this
+      self.states = {
+        /** @type {Product[]} */
+        products: [{ name: 'productA' }],
+        /** @type {Category[]} */
+        categories: [{ name: 'categoryA' }],
+      }
+    </script>
+  </test-widget>
+`;
+    const position = offsetOf(source, '{ product.name }', 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'label');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, '@property {string} name', 'name'),
+      offsetOf(source, "name: 'productA'", 'name'),
+      offsetOf(source, '{ product.name }', 'name'),
+    ]);
+  });
+
   it('renames methods declared in component state object literals', () => {
     // Arrange
     const source = `

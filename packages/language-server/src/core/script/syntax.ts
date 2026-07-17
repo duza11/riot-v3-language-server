@@ -8,6 +8,7 @@ import {
 export interface RiotV3MethodDefinition {
   nameStart: number;
   nameEnd: number;
+  bodyStart: number;
   bodyEnd: number;
 }
 
@@ -46,6 +47,7 @@ export function scanRiotV3MethodDefinition(
   return {
     nameStart,
     nameEnd,
+    bodyStart: cursor + 1,
     bodyEnd,
   };
 }

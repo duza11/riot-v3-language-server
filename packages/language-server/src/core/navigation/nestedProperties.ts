@@ -1,5 +1,10 @@
 import * as ts from 'typescript';
 import type { RiotV3ComponentAnalysis } from '../analysis';
+import {
+  findPrecedingJSDoc,
+  parseJSDocType,
+  type ScriptJSDocTypedBinding,
+} from '../script';
 import type { TemplateAnalysis, TemplateExpression } from '../template';
 import {
   getResolvedEachLocalName,
@@ -27,25 +32,33 @@ export function getNestedPropertyOccurrences(
   const { component, script, template: templateAnalysis } = componentAnalysis;
   const rootProperties = script.properties;
   const rootNames = new Set(rootProperties.map((property) => property.name));
+  const aliases = new Set(script.aliases);
+  const nestedTypedPaths = getNestedJSDocTypedPaths(
+    snapshot,
+    component.scripts,
+    aliases,
+  );
   const typedefNavigation = getTypedefNavigation(
     snapshot,
     component.scripts,
     rootProperties,
+    nestedTypedPaths,
+    script.jsDocTypedBindings,
   );
-  const aliases = new Set(script.aliases);
   const inlineTypeDeclarations = getInlineTypeDeclarations(
     snapshot,
     component.scripts,
     rootProperties,
     aliases,
   );
-  const scriptOccurrences = component.scripts.flatMap((script) =>
+  const scriptOccurrences = component.scripts.flatMap((scriptBlock) =>
     getScriptOccurrences(
       snapshot,
-      script,
+      scriptBlock,
       aliases,
       rootNames,
       typedefNavigation.symbols,
+      script.jsDocTypedBindings,
     ),
   );
   const templateOccurrences = templateAnalysis.expressions.flatMap(
@@ -236,6 +249,7 @@ function getScriptOccurrences(
   aliases: Set<string>,
   rootNames: Set<string>,
   symbols: Map<string, string>,
+  typedBindings: ScriptJSDocTypedBinding[],
 ): NestedPropertyOccurrence[] {
   const text = snapshot.getText(script.start, script.end);
   const sourceFile = ts.createSourceFile(
@@ -248,10 +262,13 @@ function getScriptOccurrences(
   const occurrences = new Map<string, NestedPropertyOccurrence>();
 
   const add = (occurrence: NestedPropertyOccurrence): void => {
-    if (occurrence.path.length < 2 || !rootNames.has(occurrence.path[0])) {
+    occurrence.symbolKey ??= symbols.get(occurrence.path.join('.'));
+    if (
+      occurrence.path.length < 2 ||
+      (!rootNames.has(occurrence.path[0]) && !occurrence.symbolKey)
+    ) {
       return;
     }
-    occurrence.symbolKey ??= symbols.get(occurrence.path.join('.'));
     const key = `${occurrence.start}:${occurrence.end}:${occurrence.symbolKey ?? occurrence.path.join('.')}`;
     const existing = occurrences.get(key);
     if (
@@ -269,6 +286,18 @@ function getScriptOccurrences(
     }
     if (ts.isIdentifier(expression) && aliases.has(expression.text)) {
       return { path: [], segments: [] };
+    }
+    if (ts.isIdentifier(expression)) {
+      const sourceOffset = script.start + expression.getStart(sourceFile);
+      const binding = typedBindings.find(
+        (candidate) =>
+          candidate.name === expression.text &&
+          sourceOffset >= candidate.scopeStart &&
+          sourceOffset < candidate.scopeEnd,
+      );
+      return binding
+        ? { path: [getTypedBindingPath(binding)], segments: [] }
+        : undefined;
     }
     if (ts.isElementAccessExpression(expression)) {
       const parent = resolvePath(expression.expression);
@@ -633,6 +662,8 @@ function getTypedefNavigation(
   snapshot: ts.IScriptSnapshot,
   scripts: ScriptBlock[],
   rootProperties: ScriptProperty[],
+  nestedTypedPaths: { path: string[]; typeName: string }[],
+  typedBindings: ScriptJSDocTypedBinding[],
 ): {
   declarations: NestedPropertyOccurrence[];
   symbols: Map<string, string>;
@@ -705,6 +736,16 @@ function getTypedefNavigation(
   for (const property of rootProperties) {
     addTypeProperties([property.name], property.typeName, new Set());
   }
+  for (const typedPath of nestedTypedPaths) {
+    addTypeProperties(typedPath.path, typedPath.typeName, new Set());
+  }
+  for (const binding of typedBindings) {
+    addTypeProperties(
+      [getTypedBindingPath(binding)],
+      binding.typeName,
+      new Set(),
+    );
+  }
 
   const parents = new Map<string, string>();
   const find = (key: string): string => {
@@ -741,6 +782,100 @@ function getTypedefNavigation(
     })),
     symbols,
   };
+}
+
+function getTypedBindingPath(binding: ScriptJSDocTypedBinding): string {
+  return `@binding:${binding.scopeStart}:${binding.name}`;
+}
+
+function getNestedJSDocTypedPaths(
+  snapshot: ts.IScriptSnapshot,
+  scripts: ScriptBlock[],
+  aliases: Set<string>,
+): { path: string[]; typeName: string }[] {
+  const typedPaths: { path: string[]; typeName: string }[] = [];
+  for (const script of scripts) {
+    const text = snapshot.getText(script.start, script.end);
+    const sourceFile = ts.createSourceFile(
+      'component.js',
+      text,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+
+    const resolvePath = (node: ts.Expression): string[] | undefined => {
+      const expression = unwrapExpression(node);
+      if (expression.kind === ts.SyntaxKind.ThisKeyword) {
+        return [];
+      }
+      if (ts.isIdentifier(expression) && aliases.has(expression.text)) {
+        return [];
+      }
+      if (ts.isPropertyAccessExpression(expression)) {
+        const parent = resolvePath(expression.expression);
+        return parent ? [...parent, expression.name.text] : undefined;
+      }
+      if (ts.isElementAccessExpression(expression)) {
+        const parent = resolvePath(expression.expression);
+        const part = getElementPathPart(
+          expression.argumentExpression,
+          sourceFile,
+          0,
+        );
+        return parent && part ? [...parent, part.text] : undefined;
+      }
+    };
+
+    const visitValue = (node: ts.Expression, path: string[]): void => {
+      const expression = unwrapExpression(node);
+      if (ts.isArrayLiteralExpression(expression)) {
+        for (const element of expression.elements) {
+          if (!ts.isSpreadElement(element)) {
+            visitValue(element, [...path, '[]']);
+          }
+        }
+        return;
+      }
+      if (!ts.isObjectLiteralExpression(expression)) {
+        return;
+      }
+      for (const property of expression.properties) {
+        if (!ts.isPropertyAssignment(property)) {
+          continue;
+        }
+        const name = getStaticPropertyName(property.name, sourceFile, 0);
+        if (!name) {
+          continue;
+        }
+        const propertyPath = [...path, name.text];
+        const jsDoc = findPrecedingJSDoc(
+          text,
+          property.name.getStart(sourceFile),
+        );
+        const typeName = jsDoc ? parseJSDocType(jsDoc) : undefined;
+        if (typeName) {
+          typedPaths.push({ path: propertyPath, typeName });
+        }
+        visitValue(property.initializer, propertyPath);
+      }
+    };
+
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      ) {
+        const path = resolvePath(node.left);
+        if (path?.length) {
+          visitValue(node.right, path);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  return typedPaths;
 }
 
 function getTypeContainerPaths(typeName: string, expected: string): string[][] {
