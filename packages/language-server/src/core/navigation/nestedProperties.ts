@@ -5,10 +5,12 @@ import {
   parseJSDocType,
   type ScriptJSDocTypedBinding,
 } from '../script';
-import type { TemplateAnalysis, TemplateExpression } from '../template';
 import {
-  getResolvedEachLocalName,
+  type EachScope,
+  getContainingEachScopes,
   shouldPrefixTemplateIdentifier,
+  type TemplateAnalysis,
+  type TemplateExpression,
 } from '../template';
 import type { ScriptBlock, ScriptProperty } from '../types';
 import type { NestedPropertyOccurrence } from './types';
@@ -492,177 +494,18 @@ function getTemplateOccurrences(
     ts.ScriptKind.JS,
   );
   const occurrences = new Map<string, NestedPropertyOccurrence>();
-
-  const shorthandScope = [...eachScopes]
-    .filter(
-      (scope) =>
-        scope.kind === 'shorthand' &&
-        expression.sourceOffset !== scope.collectionOffset &&
-        expression.sourceOffset >= scope.start &&
-        expression.sourceOffset < scope.end,
-    )
-    .sort((a, b) => b.depth - a.depth)[0];
-
-  const resolveScopeCollectionPath = (
-    scope: TemplateAnalysis['eachScopes'][number],
-  ) =>
-    resolveEachCollectionPath(
-      {
-        name: '',
-        sourceOffset: scope.sourceOffset,
-        kind: 'item',
-        collectionOffset: scope.collectionOffset,
-        collectionText: scope.collectionText,
-        collectionLocalNames: scope.collectionLocalNames,
-      },
-      expression.localDefinitions,
-      rootNames,
-    );
-
-  const resolvePath = (node: ts.Expression): ResolvedPath | undefined => {
-    const current = unwrapExpression(node);
-    if (current.kind === ts.SyntaxKind.ThisKeyword) {
-      return { path: [], segments: [] };
-    }
-    if (ts.isIdentifier(current)) {
-      const localStart = current.getStart(sourceFile) - prefix.length;
-      const localName = getResolvedEachLocalName(
-        expression,
-        localStart,
-        current.text,
-      );
-      if (localName) {
-        const collectionPath = resolveEachCollectionPath(
-          localName,
-          expression.localDefinitions,
-          rootNames,
-        );
-        return collectionPath
-          ? { path: [...collectionPath, '[]'], segments: [] }
-          : undefined;
-      }
-      if (shorthandScope) {
-        const collectionPath = resolveScopeCollectionPath(shorthandScope);
-        if (collectionPath) {
-          const path = [...collectionPath, '[]', current.text];
-          const start = expression.sourceOffset + localStart;
-          return {
-            path,
-            segments: [
-              {
-                path,
-                start,
-                end: start + current.text.length,
-                role: 'read',
-              },
-            ],
-          };
-        }
-      }
-      if (
-        !rootNames.has(current.text) ||
-        !shouldPrefixTemplateIdentifier(
-          expression.text,
-          localStart,
-          current.text,
-        )
-      ) {
-        return;
-      }
-      return {
-        path: [current.text],
-        segments: [],
-      };
-    }
-    if (ts.isElementAccessExpression(current)) {
-      const parent = resolvePath(current.expression);
-      const part = getElementPathPart(
-        current.argumentExpression,
-        sourceFile,
-        expression.sourceOffset - prefix.length,
-      );
-      if (!parent || !part) {
-        return;
-      }
-      const path = [...parent.path, part.text];
-      return {
-        path,
-        segments: [
-          ...parent.segments,
-          ...(part.start === undefined
-            ? []
-            : [
-                {
-                  path,
-                  start: part.start,
-                  end: part.end ?? part.start,
-                  role: 'read' as const,
-                },
-              ]),
-        ],
-      };
-    }
-    if (!ts.isPropertyAccessExpression(current)) {
-      return;
-    }
-    if (current.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      const localStart = current.name.getStart(sourceFile) - prefix.length;
-      const localName = getResolvedEachLocalName(
-        expression,
-        localStart,
-        current.name.text,
-      );
-      if (localName) {
-        const collectionPath = resolveEachCollectionPath(
-          localName,
-          expression.localDefinitions,
-          rootNames,
-        );
-        if (!collectionPath || localName.kind === 'index') {
-          return;
-        }
-        return { path: [...collectionPath, '[]'], segments: [] };
-      }
-      const collectionPath = shorthandScope
-        ? resolveScopeCollectionPath(shorthandScope)
-        : undefined;
-      if (collectionPath) {
-        const path = [...collectionPath, '[]', current.name.text];
-        const start = expression.sourceOffset + localStart;
-        return {
-          path,
-          segments: [
-            {
-              path,
-              start,
-              end: start + current.name.text.length,
-              role: 'read',
-            },
-          ],
-        };
-      }
-    }
-    const parent = resolvePath(current.expression);
-    if (!parent) {
-      return;
-    }
-    const path = [...parent.path, current.name.text];
-    const start =
-      expression.sourceOffset +
-      current.name.getStart(sourceFile) -
-      prefix.length;
-    return {
-      path,
-      segments: [
-        ...parent.segments,
-        {
-          path,
-          start,
-          end: start + current.name.text.length,
-          role: 'read',
-        },
-      ],
-    };
+  const context: TemplatePathContext = {
+    text: expression.text,
+    sourceOffset: expression.sourceOffset,
+    prefixLength: prefix.length,
+    sourceFile,
+    scopes: getContainingEachScopes(
+      expression.sourceOffset,
+      eachScopes,
+      expression.excludedEachScopeSourceOffset,
+    ),
+    eachScopes,
+    rootNames,
   };
 
   const visit = (node: ts.Node): void => {
@@ -671,13 +514,14 @@ function getTemplateOccurrences(
       ts.isElementAccessExpression(node) ||
       ts.isIdentifier(node)
     ) {
-      const resolved = resolvePath(node);
-      for (const segment of resolved?.segments ?? []) {
-        if (segment.path.length >= 2) {
-          segment.symbolKey ??= symbols.get(segment.path.join('.'));
+      const resolved = resolveTemplatePath(node, context);
+      if (resolved?.kind === 'path' && resolved.occurrence) {
+        const occurrence = resolved.occurrence;
+        if (resolved.path.length >= 2) {
+          occurrence.symbolKey ??= symbols.get(resolved.path.join('.'));
           occurrences.set(
-            `${segment.start}:${segment.end}:${segment.symbolKey ?? segment.path.join('.')}`,
-            segment,
+            `${occurrence.start}:${occurrence.end}:${occurrence.symbolKey ?? resolved.path.join('.')}`,
+            occurrence,
           );
         }
       }
@@ -970,54 +814,221 @@ function getTypeContainerPaths(typeName: string, expected: string): string[][] {
   return paths;
 }
 
-function resolveEachCollectionPath(
-  localName: TemplateExpression['localDefinitions'][number],
-  definitions: TemplateExpression['localDefinitions'],
-  rootNames: Set<string>,
+interface TemplatePathContext {
+  text: string;
+  sourceOffset: number;
+  prefixLength: number;
+  sourceFile: ts.SourceFile;
+  scopes: EachScope[];
+  eachScopes: EachScope[];
+  rootNames: Set<string>;
+}
+
+interface ResolvedTemplateContext {
+  kind: 'context';
+  scopes: EachScope[];
+}
+
+interface ResolvedTemplatePath {
+  kind: 'path';
+  path: string[];
+  occurrence?: NestedPropertyOccurrence;
+}
+
+type ResolvedTemplateValue = ResolvedTemplateContext | ResolvedTemplatePath;
+
+function resolveTemplatePath(
+  node: ts.Expression,
+  context: TemplatePathContext,
+): ResolvedTemplateValue | undefined {
+  const current = unwrapExpression(node);
+  if (current.kind === ts.SyntaxKind.ThisKeyword) {
+    return { kind: 'context', scopes: context.scopes };
+  }
+  if (ts.isIdentifier(current)) {
+    const localStart =
+      current.getStart(context.sourceFile) - context.prefixLength;
+    if (
+      !shouldPrefixTemplateIdentifier(context.text, localStart, current.text)
+    ) {
+      return;
+    }
+    if (current.text === 'parent') {
+      return getParentTemplateContext(context.scopes);
+    }
+    return resolveTemplateContextProperty(
+      context.scopes,
+      current.text,
+      getTemplateOccurrence(current, context),
+      context,
+    );
+  }
+  if (ts.isElementAccessExpression(current)) {
+    const parent = resolveTemplatePath(current.expression, context);
+    const part = getElementPathPart(
+      current.argumentExpression,
+      context.sourceFile,
+      context.sourceOffset - context.prefixLength,
+    );
+    if (!parent || !part) {
+      return;
+    }
+    if (parent.kind === 'context') {
+      return resolveTemplateContextProperty(
+        parent.scopes,
+        part.text,
+        part.start === undefined
+          ? undefined
+          : {
+              path: [],
+              start: part.start,
+              end: part.end ?? part.start,
+              role: 'read',
+            },
+        context,
+      );
+    }
+    const path = [...parent.path, part.text];
+    return {
+      kind: 'path',
+      path,
+      occurrence:
+        part.start === undefined
+          ? undefined
+          : {
+              path,
+              start: part.start,
+              end: part.end ?? part.start,
+              role: 'read',
+            },
+    };
+  }
+  if (!ts.isPropertyAccessExpression(current)) {
+    return;
+  }
+  const parent = resolveTemplatePath(current.expression, context);
+  if (!parent) {
+    return;
+  }
+  if (parent.kind === 'context') {
+    if (current.name.text === 'parent') {
+      return getParentTemplateContext(parent.scopes);
+    }
+    return resolveTemplateContextProperty(
+      parent.scopes,
+      current.name.text,
+      getTemplateOccurrence(current.name, context),
+      context,
+    );
+  }
+  const path = [...parent.path, current.name.text];
+  return {
+    kind: 'path',
+    path,
+    occurrence: {
+      ...getTemplateOccurrence(current.name, context),
+      path,
+    },
+  };
+}
+
+function resolveTemplateContextProperty(
+  scopes: EachScope[],
+  name: string,
+  occurrence: NestedPropertyOccurrence | undefined,
+  context: TemplatePathContext,
+): ResolvedTemplatePath | undefined {
+  const scope = scopes.at(-1);
+  if (!scope) {
+    return context.rootNames.has(name)
+      ? { kind: 'path', path: [name] }
+      : undefined;
+  }
+
+  if (scope.kind === 'explicit') {
+    const localName = scope.localNames.find((local) => local.name === name);
+    if (localName) {
+      if (localName.kind === 'index') {
+        return;
+      }
+      const collectionPath = resolveEachScopeCollectionPath(scope, context);
+      return collectionPath
+        ? { kind: 'path', path: [...collectionPath, '[]'] }
+        : undefined;
+    }
+  } else {
+    const collectionPath = resolveEachScopeCollectionPath(scope, context);
+    if (collectionPath) {
+      const path = [...collectionPath, '[]', name];
+      return {
+        kind: 'path',
+        path,
+        occurrence: occurrence ? { ...occurrence, path } : undefined,
+      };
+    }
+  }
+
+  return resolveTemplateContextProperty(
+    scopes.slice(0, -1),
+    name,
+    occurrence,
+    context,
+  );
+}
+
+function resolveEachScopeCollectionPath(
+  scope: EachScope,
+  context: TemplatePathContext,
 ): string[] | undefined {
   const sourceFile = ts.createSourceFile(
     'each-collection.js',
-    `(${localName.collectionText})`,
+    `(${scope.collectionText})`,
     ts.ScriptTarget.Latest,
     true,
     ts.ScriptKind.JS,
   );
-  const resolve = (node: ts.Expression): string[] | undefined => {
-    const current = unwrapExpression(node);
-    if (ts.isIdentifier(current)) {
-      if (localName.collectionLocalNames.includes(current.text)) {
-        const definition = [...definitions]
-          .reverse()
-          .find(
-            (candidate) =>
-              candidate.name === current.text &&
-              candidate.sourceOffset !== localName.sourceOffset,
-          );
-        const parent = definition
-          ? resolveEachCollectionPath(definition, definitions, rootNames)
-          : undefined;
-        return parent ? [...parent, '[]'] : undefined;
-      }
-      return rootNames.has(current.text) ? [current.text] : undefined;
-    }
-    if (ts.isPropertyAccessExpression(current)) {
-      const parent = resolve(current.expression);
-      return parent ? [...parent, current.name.text] : undefined;
-    }
-    if (ts.isElementAccessExpression(current)) {
-      const parent = resolve(current.expression);
-      const part = getElementPathPart(
-        current.argumentExpression,
-        sourceFile,
-        0,
-      );
-      return parent && part ? [...parent, part.text] : undefined;
-    }
-  };
   const statement = sourceFile.statements[0];
-  return statement && ts.isExpressionStatement(statement)
-    ? resolve(statement.expression)
+  if (!statement || !ts.isExpressionStatement(statement)) {
+    return;
+  }
+  const value = resolveTemplatePath(statement.expression, {
+    text: scope.collectionText,
+    sourceOffset: scope.collectionOffset,
+    prefixLength: 1,
+    sourceFile,
+    scopes: getContainingEachScopes(
+      scope.collectionOffset,
+      context.eachScopes,
+      scope.sourceOffset,
+    ),
+    eachScopes: context.eachScopes,
+    rootNames: context.rootNames,
+  });
+  return value?.kind === 'path' ? value.path : undefined;
+}
+
+function getParentTemplateContext(
+  scopes: EachScope[],
+): ResolvedTemplateContext | undefined {
+  return scopes.length
+    ? { kind: 'context', scopes: scopes.slice(0, -1) }
     : undefined;
+}
+
+function getTemplateOccurrence(
+  node: ts.Node,
+  context: TemplatePathContext,
+): NestedPropertyOccurrence {
+  const start =
+    context.sourceOffset +
+    node.getStart(context.sourceFile) -
+    context.prefixLength;
+  return {
+    path: [],
+    start,
+    end: start + node.getWidth(context.sourceFile),
+    role: 'read',
+  };
 }
 
 function getElementPathPart(

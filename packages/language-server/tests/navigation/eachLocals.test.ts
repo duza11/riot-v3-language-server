@@ -137,6 +137,27 @@ describe('each local navigation', () => {
     ]);
   });
 
+  it('renames explicit each locals declared by parent collections', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ list }>
+      <p each={ message in parent.list }>{ message }</p>
+    </div>
+  </root>
+  `;
+    const position = offsetOf(source, 'message in parent.list', 'message');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'text');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      position,
+      offsetOf(source, '{ message }', 'message'),
+    ]);
+  });
+
   it('keeps outer shadowed Riot v3 each locals separate during rename', () => {
     const source = `
   <demo-widget>
