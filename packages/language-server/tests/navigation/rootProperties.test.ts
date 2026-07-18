@@ -92,6 +92,31 @@ describe('root property navigation', () => {
     ]);
   });
 
+  it('finds root properties used through parent in each collections', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ list }>
+      <p each={ message in parent.list }>{ message }</p>
+    </div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `;
+    const position = offsetOf(source, 'this.list', 'list');
+
+    // Act
+    const references = getRiotV3ReferenceRanges(source, position);
+
+    // Assert
+    expect(startsOf(references)).toEqual([
+      position,
+      offsetOf(source, 'each={ list }', 'list'),
+      offsetOf(source, 'parent.list', 'list'),
+    ]);
+  });
+
   it('renames a script method and its template reference from the script side', () => {
     const source = `
   <demo-widget>

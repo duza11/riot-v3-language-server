@@ -114,6 +114,91 @@ describe('nested property navigation', () => {
     ]);
   });
 
+  it('renames parent collection properties from nested each expressions', () => {
+    // Arrange
+    const source = `
+  <root>
+    <section each={ groups }>
+      <div each={ children }>
+        <p each={ sibling in parent.siblings }>{ sibling.label }</p>
+      </div>
+    </section>
+    <script>
+      this.groups = [{
+        children: [{}],
+        siblings: [{ label: 'Sibling' }],
+      }]
+    </script>
+  </root>
+  `;
+    const position = offsetOf(source, 'parent.siblings', 'siblings');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'related');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "siblings: [{ label: 'Sibling' }]", 'siblings'),
+      position,
+    ]);
+  });
+
+  it('renames nested properties reached through parent collections', () => {
+    // Arrange
+    const source = `
+  <root>
+    <section each={ groups }>
+      <div each={ children }>
+        <p each={ sibling in this.parent.siblings }>{ sibling.label }</p>
+      </div>
+    </section>
+    <script>
+      this.groups = [{
+        children: [{}],
+        siblings: [{ label: 'Sibling' }],
+      }]
+    </script>
+  </root>
+  `;
+    const position = offsetOf(source, '{ sibling.label }', 'label');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'title');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "label: 'Sibling'", 'label'),
+      position,
+    ]);
+  });
+
+  it('renames nested properties reached through multiple parent contexts', () => {
+    // Arrange
+    const source = `
+  <root>
+    <section each={ groups }>
+      <div each={ children }>
+        <p each={ item in parent.parent.items }>{ item.name }</p>
+      </div>
+    </section>
+    <script>
+      this.groups = [{ children: [{}] }]
+      this.items = [{ name: 'Root item' }]
+    </script>
+  </root>
+  `;
+    const position = offsetOf(source, '{ item.name }', 'name');
+
+    // Act
+    const references = getRiotV3ReferenceRanges(source, position);
+
+    // Assert
+    expect(startsOf(references)).toEqual([
+      offsetOf(source, "name: 'Root item'", 'name'),
+      position,
+    ]);
+  });
+
   it('renames methods declared in component state object literals', () => {
     // Arrange
     const source = `

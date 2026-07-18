@@ -50,6 +50,14 @@ export function getEachScopes(
       eachExpression.collectionOffset,
       scopes,
     );
+    const collectionLocalDefinitions = getLocalDefinitionsForOffset(
+      eachExpression.collectionOffset,
+      scopes,
+    );
+    const collectionEachDepth = getEachDepthForOffset(
+      eachExpression.collectionOffset,
+      scopes,
+    );
     scopes.push({
       kind: eachExpression.kind,
       start: node.start,
@@ -58,6 +66,8 @@ export function getEachScopes(
       collectionOffset: eachExpression.collectionOffset,
       collectionText: eachExpression.collectionText,
       collectionLocalNames,
+      collectionLocalDefinitions,
+      collectionEachDepth,
       depth: getContainingEachScopes(node.start, scopes).length,
       localNames: eachExpression.localNames.map((localName) => ({
         ...localName,
@@ -66,6 +76,20 @@ export function getEachScopes(
     });
   }
   return scopes;
+}
+
+export function createEachCollectionExpression(
+  scope: EachScope,
+): TemplateExpression {
+  return {
+    kind: 'expression',
+    sourceOffset: scope.collectionOffset,
+    text: scope.collectionText,
+    localNames: scope.collectionLocalNames,
+    localDefinitions: scope.collectionLocalDefinitions,
+    eachDepth: scope.collectionEachDepth,
+    excludedEachScopeSourceOffset: scope.sourceOffset,
+  };
 }
 
 export function parseEachExpression(
