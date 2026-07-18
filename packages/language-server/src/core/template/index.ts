@@ -1,5 +1,5 @@
 export { createTemplateAnalysis } from './analysis';
-export { getResolvedEachLocalName } from './each';
+export { getContainingEachScopes, getResolvedEachLocalName } from './each';
 export { shouldPrefixTemplateIdentifier } from './identifiers';
 export type {
   EachLocalName,

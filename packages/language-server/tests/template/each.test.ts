@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getTemplateIdentifierType } from '../helpers/typescript';
+import {
+  getTemplateIdentifierType,
+  getTemplateSemanticDiagnostics,
+} from '../helpers/typescript';
 import { createVirtualCode, getTemplateText } from '../helpers/virtualCode';
 
 describe('each template expressions', () => {
@@ -18,19 +21,16 @@ describe('each template expressions', () => {
     const template = getTemplateText(code);
 
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
+      'type __riot_v3_each_context_0 = RiotV3TypedEachContext<__riot_v3_each_data_0',
     );
     expect(template).toContain(
       'const __riot_v3_each_collection_0 = this.items;',
     );
-    expect(template).toContain(
-      'const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_0>;',
-    );
+    expect(template).toContain('const item = this.item;');
     expect(template).toContain('item.visible');
     expect(template).toContain('item.name');
     expect(template).toContain('this.items.length');
     expect(template).toContain('this.parent.items.length');
-    expect(template).not.toMatch(/\bthis\.item\b/);
   });
 
   it('supports Riot v3 each item and index syntax', () => {
@@ -45,17 +45,11 @@ describe('each template expressions', () => {
     const template = getTemplateText(code);
 
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
+      'type __riot_v3_each_data_0 = RiotV3EachData<{ item: RiotV3EachItem<typeof __riot_v3_each_collection_0>; i: RiotV3EachIndex<typeof __riot_v3_each_collection_0>; }',
     );
-    expect(template).toContain(
-      'const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_0>;',
-    );
-    expect(template).toContain(
-      'const i = undefined as unknown as RiotV3EachIndex<typeof __riot_v3_each_collection_0>;',
-    );
+    expect(template).toContain('const item = this.item;');
+    expect(template).toContain('const i = this.i;');
     expect(template).toContain('item.name');
-    expect(template).not.toMatch(/\bthis\.item\b/);
-    expect(template).not.toMatch(/\bthis\.i\b/);
   });
 
   it('infers Riot v3 each item and index types from array collections', () => {
@@ -79,6 +73,210 @@ describe('each template expressions', () => {
 
     expect(itemType).toBe('{ name: string; visible: boolean; }');
     expect(indexType).toBe('number');
+  });
+
+  it('infers shorthand each context properties from array elements', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <ul>
+      <li each={ items }>{ name } { this.active }</li>
+    </ul>
+    <script>
+      this.items = [{ name: 'Alice', active: true }]
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const nameType = getTemplateIdentifierType(
+      code,
+      'void (this.name)',
+      'name',
+    );
+    const activeType = getTemplateIdentifierType(
+      code,
+      'void (this.active)',
+      'active',
+    );
+
+    // Assert
+    expect(nameType).toBe('string');
+    expect(activeType).toBe('boolean');
+  });
+
+  it('prefers shorthand each item properties over parent properties', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p each={ items }>{ name }</p>
+    <script>
+      this.name = 42
+      this.items = [{ name: 'Alice' }]
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(code, 'void (this.name)', 'name');
+
+    // Assert
+    expect(type).toBe('string');
+  });
+
+  it('inherits parent properties in shorthand each contexts', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p each={ items }>{ title } { parent.title }</p>
+    <script>
+      this.title = 'People'
+      this.items = [{ name: 'Alice' }]
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const inheritedType = getTemplateIdentifierType(
+      code,
+      'void (this.title)',
+      'title',
+    );
+    const parentType = getTemplateIdentifierType(
+      code,
+      'this.parent.title',
+      'title',
+    );
+
+    // Assert
+    expect(inheritedType).toBe('string');
+    expect(parentType).toBe('string');
+  });
+
+  it('infers explicit each locals through this', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <ul>
+      <li each={ item, i in items }>{ this.item.name } { this.i.toFixed() }</li>
+    </ul>
+    <script>
+      this.items = [{ name: 'Alice' }]
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const itemType = getTemplateIdentifierType(
+      code,
+      'void (this.item.name)',
+      'item',
+    );
+    const indexMethodType = getTemplateIdentifierType(
+      code,
+      'this.i.toFixed()',
+      'toFixed',
+    );
+
+    // Assert
+    expect(itemType).toBe('{ name: string; }');
+    expect(indexMethodType).toBe(
+      '(fractionDigits?: number | undefined) => string',
+    );
+  });
+
+  it('does not report explicit each locals as unused when referenced through this', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p each={ item, i in items }>{ this.item.name } { this.i }</p>
+    <script>
+      this.items = [{ name: 'Alice' }]
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    });
+
+    // Assert
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.code === 6133),
+    ).toEqual([]);
+  });
+
+  it('infers mixed shorthand and explicit nested each contexts', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <section each={ groups }>
+      <p each={ child in children }>{ groupName } { child.label } { this.child.label }</p>
+    </section>
+    <script>
+      this.groups = [{
+        groupName: 'Group',
+        children: [{ label: 'Child' }],
+      }]
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const parentItemType = getTemplateIdentifierType(
+      code,
+      'void (this.groupName)',
+      'groupName',
+    );
+    const localType = getTemplateIdentifierType(
+      code,
+      'void (child.label)',
+      'label',
+    );
+    const thisLocalType = getTemplateIdentifierType(
+      code,
+      'void (this.child.label)',
+      'label',
+    );
+
+    // Assert
+    expect(parentItemType).toBe('string');
+    expect(localType).toBe('string');
+    expect(thisLocalType).toBe('string');
+  });
+
+  it('infers shorthand items nested in explicit each contexts', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <section each={ group in groups }>
+      <p each={ group.children }>{ label } { this.label } { group.name }</p>
+    </section>
+    <script>
+      this.groups = [{
+        name: 'Group',
+        children: [{ label: 'Child' }],
+      }]
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const bareType = getTemplateIdentifierType(
+      code,
+      'void (this.label)',
+      'label',
+    );
+    const explicitType = getTemplateIdentifierType(
+      code,
+      'void (group.name)',
+      'name',
+    );
+
+    // Assert
+    expect(bareType).toBe('string');
+    expect(explicitType).toBe('string');
   });
 
   it('infers heterogeneous Riot v3 each item property types', () => {
@@ -353,7 +551,7 @@ describe('each template expressions', () => {
     expect(
       template,
     ).not.toContain(`const __riot_v3_each_collection_1 = group.items;
-  const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_1>;
+  const item = this.item;
   void (group.name);`);
   });
 
@@ -376,7 +574,7 @@ describe('each template expressions', () => {
     expect(
       template,
     ).not.toContain(`const __riot_v3_each_collection_1 = group.items;
-  const item = undefined as unknown as RiotV3EachItem<typeof __riot_v3_each_collection_1>;
+  const item = this.item;
   void (this.item);`);
   });
 
@@ -396,7 +594,7 @@ describe('each template expressions', () => {
 
     expect(template).toContain('this.items');
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
+      'type __riot_v3_each_data_0 = RiotV3EachData<RiotV3EachItem<typeof __riot_v3_each_collection_0>',
     );
     expect(template).toContain('this.name');
     expect(template).toContain('this.title');
@@ -425,10 +623,10 @@ describe('each template expressions', () => {
 
     expect(template).toContain('this.groups');
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
+      'type __riot_v3_each_context_0 = RiotV3TypedEachContext<__riot_v3_each_data_0',
     );
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachTemplateContext_0_1)",
+      'type __riot_v3_each_context_1 = RiotV3TypedEachContext<__riot_v3_each_data_1, __riot_v3_each_context_0>',
     );
     expect(template).toContain('group.items');
     expect(template).toContain('group.name');
@@ -436,7 +634,5 @@ describe('each template expressions', () => {
     expect(template).toContain('this.title');
     expect(template).toContain('this.parent.title');
     expect(template).not.toContain('this.group.items');
-    expect(template).not.toMatch(/\bthis\.group\b/);
-    expect(template).not.toMatch(/\bthis\.item\b/);
   });
 });

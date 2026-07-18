@@ -72,6 +72,71 @@ describe('each local navigation', () => {
     ]);
   });
 
+  it('renames explicit each locals referenced through this', () => {
+    // Arrange
+    const source = `
+  <demo-widget>
+    <ul>
+      <li each={ item, i in items }>{ item.name } { this.item.name }</li>
+    </ul>
+  </demo-widget>
+  `;
+    const position = offsetOf(source, 'item, i in items', 'item');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'entry');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, 'item, i in items', 'item'),
+      offsetOf(source, '{ item.name }', 'item'),
+      offsetOf(source, '{ this.item.name }', 'item'),
+    ]);
+    expectAllNewText(edits, 'entry');
+  });
+
+  it('renames explicit each locals from this references', () => {
+    // Arrange
+    const source = `
+  <demo-widget>
+    <p each={ item in items }>{ item.name } { this.item.name }</p>
+  </demo-widget>
+  `;
+    const position = offsetOf(source, '{ this.item.name }', 'item');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'entry');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, 'item in items', 'item'),
+      offsetOf(source, '{ item.name }', 'item'),
+      offsetOf(source, '{ this.item.name }', 'item'),
+    ]);
+  });
+
+  it('renames explicit each indexes through bare and this references', () => {
+    // Arrange
+    const source = `
+  <demo-widget>
+    <p each={ item, i in items }>{ i } { this.i }</p>
+  </demo-widget>
+  `;
+    const thisIndexOffset =
+      offsetOf(source, '{ this.i }', 'this.i') + 'this.'.length;
+    const position = thisIndexOffset;
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'index');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, 'item, i in items', 'i in'),
+      offsetOf(source, '{ i }', 'i'),
+      thisIndexOffset,
+    ]);
+  });
+
   it('keeps outer shadowed Riot v3 each locals separate during rename', () => {
     const source = `
   <demo-widget>

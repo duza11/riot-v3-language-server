@@ -5,7 +5,6 @@ import type { TextRange } from '../types';
 import { findTemplateExpressionEnd } from './attributes';
 import { parseClassShorthandExpressions } from './classShorthand';
 import {
-  getEachDepthCountForScopes,
   getEachDepthForOffset,
   getEachScopes,
   getLocalDefinitionsForOffset,
@@ -30,7 +29,6 @@ export function createTemplateAnalysis(
       range,
     ),
     eachScopes,
-    eachDepthCount: getEachDepthCountForScopes(eachScopes),
   };
 }
 
@@ -84,6 +82,7 @@ function getTemplateExpressionsForSource(
             eachScopes,
             textStart,
           ),
+          excludedEachScopeSourceOffset: textStart,
         });
       }
       offset = end;

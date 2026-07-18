@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getTemplateIdentifierType } from '../helpers/typescript';
 import { createVirtualCode, getTemplateText } from '../helpers/virtualCode';
 
 describe('class shorthand template expressions', () => {
@@ -66,12 +67,35 @@ describe('class shorthand template expressions', () => {
     const template = getTemplateText(code);
 
     expect(template).toContain(
-      "function(this: import('riot-v3:anonymous').EachTemplateContext_0)",
+      'type __riot_v3_each_context_0 = RiotV3TypedEachContext<__riot_v3_each_data_0',
     );
     expect(template).toContain('item.active');
     expect(template).toContain('item.name');
     expect(template).toContain('this.selected');
-    expect(template).not.toMatch(/\bthis\.item\b/);
     expect(template).not.toMatch(/\bthis\.active\b/);
+  });
+
+  it('infers shorthand each properties in class shorthand values', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <ul>
+      <li each={ items } class={ active: this.active }>{ name }</li>
+    </ul>
+    <script>
+      this.items = [{ active: true, name: 'Alice' }]
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'void (this.active)',
+      'active',
+    );
+
+    // Assert
+    expect(type).toBe('boolean');
   });
 });

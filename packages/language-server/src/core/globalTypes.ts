@@ -13,8 +13,14 @@ type RiotV3EachIndex<T> =
 	T extends readonly unknown[] | string ? number :
 	T extends object ? Extract<keyof T, string> :
 	any;
+type RiotV3EachObject<T> =
+	T extends object ? Omit<T, 'opts' | 'parent'> : {};
+type RiotV3EachData<Current, Parent> =
+	RiotV3EachObject<Current> & Omit<Parent, keyof RiotV3EachObject<Current>>;
 type RiotV3TemplateContext<Instance, State> =
 	Instance & Omit<typeof globalThis, keyof State>;
+type RiotV3TypedEachContext<Data, Parent> =
+	RiotV3TemplateContext<RiotV3EachContext & Data & { parent: Parent }, Data>;
 
 interface RiotV3Observable {
 	on(events: string, callback: (...args: any[]) => void): this;
@@ -77,7 +83,6 @@ declare const opts: RiotV3TagInstance['opts'];
 export interface RiotV3GlobalTypesComponentData {
   scriptProperties: ScriptProperty[];
   jsDocTypedefs: JSDocTypedef[];
-  eachDepthCount: number;
 }
 
 export interface GeneratedRiotV3GlobalTypes {
@@ -95,8 +100,7 @@ export function generateRiotV3GlobalTypes(
     },
   ];
   for (let index = 0; index < components.length; index++) {
-    const { scriptProperties, jsDocTypedefs, eachDepthCount } =
-      components[index];
+    const { scriptProperties, jsDocTypedefs } = components[index];
     const jsDocTypedefNames = new Map(
       jsDocTypedefs.map((typedef) => [
         typedef.name,
@@ -137,23 +141,6 @@ export function generateRiotV3GlobalTypes(
     dynamicTypeSegments.push({
       text: `\texport type ${typeNames.templateContext} = RiotV3TemplateContext<${typeNames.templateInstance}, ${getComponentStateTypeName(index)}>;\n`,
     });
-    for (let depth = 0; depth < Math.max(1, eachDepthCount); depth++) {
-      const eachContextName = getEachContextTypeName(index, depth);
-      const eachTemplateContextName = getEachTemplateContextTypeName(
-        index,
-        depth,
-      );
-      const parentTypeName =
-        depth === 0
-          ? typeNames.templateInstance
-          : getEachContextTypeName(index, depth - 1);
-      dynamicTypeSegments.push({
-        text: `\texport interface ${eachContextName} extends RiotV3EachContext, ${typeNames.templateInstance} {\n\t\tparent: ${parentTypeName};\n\t}\n`,
-      });
-      dynamicTypeSegments.push({
-        text: `\texport type ${eachTemplateContextName} = RiotV3TemplateContext<${eachContextName}, ${getComponentStateTypeName(index)}>;\n`,
-      });
-    }
   }
   dynamicTypeSegments.push({ text: '}\n' });
 
@@ -164,37 +151,17 @@ export function generateRiotV3GlobalTypes(
 }
 
 export function getComponentTypeNames(index: number): {
+  componentState: string;
   tagInstance: string;
   templateInstance: string;
   templateContext: string;
-  eachContext: string;
-  eachTemplateContext: string;
 } {
   return {
+    componentState: getComponentStateTypeName(index),
     tagInstance: getComponentTypeName('TagInstance', index),
     templateInstance: getComponentTypeName('TemplateInstance', index),
     templateContext: getComponentTypeName('TemplateContext', index),
-    eachContext: getEachContextTypeName(index, 0),
-    eachTemplateContext: getEachTemplateContextTypeName(index, 0),
   };
-}
-
-function getEachTemplateContextTypeName(
-  componentIndex: number,
-  depth: number,
-): string {
-  return depth === 0
-    ? getComponentTypeName('EachTemplateContext', componentIndex)
-    : `${getComponentTypeName('EachTemplateContext', componentIndex)}_${depth}`;
-}
-
-export function getEachContextTypeName(
-  componentIndex: number,
-  depth: number,
-): string {
-  return depth === 0
-    ? getComponentTypeName('EachContext', componentIndex)
-    : `${getComponentTypeName('EachContext', componentIndex)}_${depth}`;
 }
 
 export function getRiotV3FileTypeScope(fileName: string): string {

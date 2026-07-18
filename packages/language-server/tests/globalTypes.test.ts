@@ -811,25 +811,6 @@ describe('global type virtual code', () => {
     expect(globals).toContain('obj: { hoge: string; [key: string]: any; };');
   });
 
-  it('creates nested each context types', () => {
-    const code = createVirtualCode(`
-<demo-widget>
-  <ul>
-    <li each={ group in groups }>
-      <em each={ item in group.items }>{ item.name }</em>
-    </li>
-  </ul>
-</demo-widget>
-`);
-
-    const globals = getGlobalTypesText(code);
-
-    expect(globals).toContain(
-      'export interface EachContext_0_1 extends RiotV3EachContext, TemplateInstance_0',
-    );
-    expect(globals).toContain('parent: EachContext_0;');
-  });
-
   it('keeps component state scoped to each Riot v3 component', () => {
     const code = createVirtualCode(`
 <first-widget>

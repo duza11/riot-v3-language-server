@@ -493,6 +493,32 @@ function getTemplateOccurrences(
   );
   const occurrences = new Map<string, NestedPropertyOccurrence>();
 
+  const shorthandScope = [...eachScopes]
+    .filter(
+      (scope) =>
+        scope.kind === 'shorthand' &&
+        expression.sourceOffset !== scope.collectionOffset &&
+        expression.sourceOffset >= scope.start &&
+        expression.sourceOffset < scope.end,
+    )
+    .sort((a, b) => b.depth - a.depth)[0];
+
+  const resolveScopeCollectionPath = (
+    scope: TemplateAnalysis['eachScopes'][number],
+  ) =>
+    resolveEachCollectionPath(
+      {
+        name: '',
+        sourceOffset: scope.sourceOffset,
+        kind: 'item',
+        collectionOffset: scope.collectionOffset,
+        collectionText: scope.collectionText,
+        collectionLocalNames: scope.collectionLocalNames,
+      },
+      expression.localDefinitions,
+      rootNames,
+    );
+
   const resolvePath = (node: ts.Expression): ResolvedPath | undefined => {
     const current = unwrapExpression(node);
     if (current.kind === ts.SyntaxKind.ThisKeyword) {
@@ -515,28 +541,8 @@ function getTemplateOccurrences(
           ? { path: [...collectionPath, '[]'], segments: [] }
           : undefined;
       }
-      const shorthandScope = [...eachScopes]
-        .filter(
-          (scope) =>
-            scope.localNames.length === 0 &&
-            expression.sourceOffset !== scope.collectionOffset &&
-            expression.sourceOffset >= scope.start &&
-            expression.sourceOffset < scope.end,
-        )
-        .sort((a, b) => b.depth - a.depth)[0];
       if (shorthandScope) {
-        const collectionPath = resolveEachCollectionPath(
-          {
-            name: '',
-            sourceOffset: shorthandScope.sourceOffset,
-            kind: 'item',
-            collectionOffset: shorthandScope.collectionOffset,
-            collectionText: shorthandScope.collectionText,
-            collectionLocalNames: shorthandScope.collectionLocalNames,
-          },
-          expression.localDefinitions,
-          rootNames,
-        );
+        const collectionPath = resolveScopeCollectionPath(shorthandScope);
         if (collectionPath) {
           const path = [...collectionPath, '[]', current.text];
           const start = expression.sourceOffset + localStart;
@@ -598,6 +604,43 @@ function getTemplateOccurrences(
     }
     if (!ts.isPropertyAccessExpression(current)) {
       return;
+    }
+    if (current.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      const localStart = current.name.getStart(sourceFile) - prefix.length;
+      const localName = getResolvedEachLocalName(
+        expression,
+        localStart,
+        current.name.text,
+      );
+      if (localName) {
+        const collectionPath = resolveEachCollectionPath(
+          localName,
+          expression.localDefinitions,
+          rootNames,
+        );
+        if (!collectionPath || localName.kind === 'index') {
+          return;
+        }
+        return { path: [...collectionPath, '[]'], segments: [] };
+      }
+      const collectionPath = shorthandScope
+        ? resolveScopeCollectionPath(shorthandScope)
+        : undefined;
+      if (collectionPath) {
+        const path = [...collectionPath, '[]', current.name.text];
+        const start = expression.sourceOffset + localStart;
+        return {
+          path,
+          segments: [
+            {
+              path,
+              start,
+              end: start + current.name.text.length,
+              role: 'read',
+            },
+          ],
+        };
+      }
     }
     const parent = resolvePath(current.expression);
     if (!parent) {

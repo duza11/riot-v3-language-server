@@ -71,10 +71,9 @@ export class RiotV3VirtualCode implements VirtualCode {
         componentTypesModuleName,
       ),
       createRiotV3GlobalTypesVirtualCode(
-        this.analysis.components.map(({ script, template }) => ({
+        this.analysis.components.map(({ script }) => ({
           scriptProperties: script.properties,
           jsDocTypedefs: script.jsDocTypedefs,
-          eachDepthCount: template.eachDepthCount,
         })),
         fileTypeScope,
       ),
@@ -140,6 +139,10 @@ function* getRiotV3EmbeddedCodes(
   for (const { component, template } of componentAnalyses) {
     const componentTypeNames = getComponentTypeNames(component.index);
     const componentTypeReferences = {
+      componentState: getRiotV3ComponentTypeReference(
+        componentTypesModuleName,
+        componentTypeNames.componentState,
+      ),
       tagInstance: getRiotV3ComponentTypeReference(
         componentTypesModuleName,
         componentTypeNames.tagInstance,
@@ -148,9 +151,9 @@ function* getRiotV3EmbeddedCodes(
         componentTypesModuleName,
         componentTypeNames.templateContext,
       ),
-      eachTemplateContext: getRiotV3ComponentTypeReference(
+      templateInstance: getRiotV3ComponentTypeReference(
         componentTypesModuleName,
-        componentTypeNames.eachTemplateContext,
+        componentTypeNames.templateInstance,
       ),
     };
 
@@ -219,6 +222,7 @@ function* getRiotV3EmbeddedCodes(
           ? 'template'
           : 'template_' + component.index,
         template.expressions,
+        template.eachScopes,
         componentTypeReferences,
       );
     }

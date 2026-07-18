@@ -193,18 +193,26 @@ function getIdentifierOffset(
 export function getTemplatePropertyDoesNotExistDiagnostics(
   codes: RiotV3VirtualCode[],
 ): readonly ts.Diagnostic[] {
+  return getTemplateSemanticDiagnostics(codes).filter(
+    (diagnostic) => diagnostic.code === 2339,
+  );
+}
+
+export function getTemplateSemanticDiagnostics(
+  codes: RiotV3VirtualCode[],
+  compilerOptions: ts.CompilerOptions = {},
+): readonly ts.Diagnostic[] {
   const sourceFiles = createTemplateSourceFiles(codes);
   const options: ts.CompilerOptions = {
     strict: true,
     noEmit: true,
     lib: ['lib.esnext.d.ts', 'lib.dom.d.ts'],
+    ...compilerOptions,
   };
   const program = createVirtualProgram(sourceFiles, options);
 
   return sourceFiles.flatMap((sourceFile) =>
-    program
-      .getSemanticDiagnostics(sourceFile)
-      .filter((diagnostic) => diagnostic.code === 2339),
+    program.getSemanticDiagnostics(sourceFile),
   );
 }
 

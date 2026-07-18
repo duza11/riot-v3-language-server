@@ -14,6 +14,7 @@ import {
 import type { EachLocalName, EachScope, TemplateExpression } from './types';
 
 interface EachExpression {
+  kind: 'shorthand' | 'explicit';
   localNames: EachLocalName[];
   collectionOffset: number;
   collectionText: string;
@@ -50,6 +51,7 @@ export function getEachScopes(
       scopes,
     );
     scopes.push({
+      kind: eachExpression.kind,
       start: node.start,
       end: node.end,
       sourceOffset: eachAttribute.sourceOffset,
@@ -64,13 +66,6 @@ export function getEachScopes(
     });
   }
   return scopes;
-}
-
-export function getEachDepthCountForScopes(scopes: EachScope[]): number {
-  return scopes.reduce(
-    (maxDepth, scope) => Math.max(maxDepth, scope.depth + 1),
-    0,
-  );
 }
 
 export function parseEachExpression(
@@ -88,6 +83,7 @@ export function parseEachExpression(
   const separator = findEachInSeparator(trimmedText);
   if (!separator) {
     return {
+      kind: 'shorthand',
       localNames: [],
       collectionOffset: trimmedSourceOffset,
       collectionText: trimmedText,
@@ -110,6 +106,7 @@ export function parseEachExpression(
     trimmedSourceOffset + separator.end + collectionLeadingWhitespace;
 
   return {
+    kind: 'explicit',
     localNames: localNames.map((localName, index) => ({
       ...localName,
       kind: index === 0 ? 'item' : 'index',
@@ -278,7 +275,7 @@ export function getEachDepthForOffset(
   return stack.at(-1)?.depth;
 }
 
-function getContainingEachScopes(
+export function getContainingEachScopes(
   offset: number,
   scopes: EachScope[],
   excludedScopeSourceOffset?: number,
@@ -293,12 +290,12 @@ function getContainingEachScopes(
     .sort((a, b) => a.depth - b.depth || a.start - b.start);
 }
 
-export function getUsedEachLocalDefinitions(
+export function getUsedBareEachLocalDefinitions(
   expression: TemplateExpression,
 ): EachLocalName[] {
   const visibleDefinitions = getVisibleEachLocalDefinitions(expression);
   const usedDefinitions = new Map<number, EachLocalName>();
-  addUsedEachLocalDefinitions(
+  addUsedBareEachLocalDefinitions(
     expression.text,
     expression.sourceOffset,
     expression.localNames,
@@ -318,8 +315,8 @@ export function getResolvedEachLocalName(
   if (!expression.localNames.includes(identifier)) {
     return;
   }
-  const previous = findPreviousNonWhitespace(expression.text, offset - 1);
-  if (previous === '.') {
+  const qualifier = getPropertyQualifier(expression.text, offset);
+  if (qualifier !== undefined && qualifier !== 'this') {
     return;
   }
   for (
@@ -351,7 +348,7 @@ function getVisibleEachLocalDefinitions(
   return definitions;
 }
 
-function addUsedEachLocalDefinitions(
+function addUsedBareEachLocalDefinitions(
   text: string,
   sourceOffset: number,
   localNames: string[],
@@ -379,11 +376,15 @@ function addUsedEachLocalDefinitions(
     }
     const identifier = text.slice(start, offset);
     const localName = getResolvedEachLocalName(expression, start, identifier);
-    if (!localName || usedDefinitions.has(localName.sourceOffset)) {
+    if (
+      !localName ||
+      getPropertyQualifier(text, start) === 'this' ||
+      usedDefinitions.has(localName.sourceOffset)
+    ) {
       continue;
     }
     usedDefinitions.set(localName.sourceOffset, localName);
-    addUsedEachLocalDefinitions(
+    addUsedBareEachLocalDefinitions(
       localName.collectionText,
       localName.collectionOffset,
       localName.collectionLocalNames,
@@ -391,4 +392,27 @@ function addUsedEachLocalDefinitions(
       usedDefinitions,
     );
   }
+}
+
+function getPropertyQualifier(
+  text: string,
+  offset: number,
+): string | undefined {
+  const previous = findPreviousNonWhitespace(text, offset - 1);
+  if (previous !== '.') {
+    return;
+  }
+  let cursor = offset - 1;
+  while (cursor >= 0 && /\s/.test(text[cursor])) {
+    cursor--;
+  }
+  cursor--;
+  while (cursor >= 0 && /\s/.test(text[cursor])) {
+    cursor--;
+  }
+  const end = cursor + 1;
+  while (cursor >= 0 && isIdentifierPart(text[cursor])) {
+    cursor--;
+  }
+  return text.slice(cursor + 1, end);
 }
