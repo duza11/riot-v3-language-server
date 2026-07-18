@@ -6,6 +6,7 @@ import {
 } from '../scanners';
 import type { GeneratedSegment } from '../types';
 import {
+  createEachCollectionExpression,
   getContainingEachScopes,
   getUsedBareEachLocalDefinitions,
 } from './each';
@@ -144,14 +145,9 @@ function generateScopedExpressionSegments(
     ),
   );
   for (const scope of scopes) {
-    for (const localName of getUsedBareEachLocalDefinitions({
-      kind: 'expression',
-      sourceOffset: scope.collectionOffset,
-      text: scope.collectionText,
-      localNames: scope.collectionLocalNames,
-      localDefinitions: expression.localDefinitions,
-      eachDepth: undefined,
-    })) {
+    for (const localName of getUsedBareEachLocalDefinitions(
+      createEachCollectionExpression(scope),
+    )) {
       usedLocalOffsets.add(localName.sourceOffset);
     }
   }
@@ -165,14 +161,7 @@ function generateScopedExpressionSegments(
     segments.push({ text: `const ${collectionName} = ` });
     segments.push(
       ...generateTemplateExpressionSegments(
-        {
-          kind: 'expression',
-          sourceOffset: scope.collectionOffset,
-          text: scope.collectionText,
-          localNames: scope.collectionLocalNames,
-          localDefinitions: [],
-          eachDepth: undefined,
-        },
+        createEachCollectionExpression(scope),
         false,
       ),
     );

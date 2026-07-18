@@ -279,6 +279,106 @@ describe('each template expressions', () => {
     expect(explicitType).toBe('string');
   });
 
+  it('infers explicit each locals from parent collections', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <div each={ list }>
+      <div each={ message, i in parent.list }>
+        <p>{ message } { i.toFixed() }</p>
+      </div>
+    </div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `);
+
+    // Act
+    const messageType = getTemplateIdentifierType(
+      code,
+      'void (message)',
+      'message',
+    );
+    const indexType = getTemplateIdentifierType(code, 'i.toFixed', 'i');
+
+    // Assert
+    expect(messageType).toBe('string');
+    expect(indexType).toBe('number');
+  });
+
+  it('infers explicit each locals from this.parent collections', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <div each={ list }>
+      <p each={ message in this.parent.list }>{ message }</p>
+    </div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(code, 'void (message)', 'message');
+
+    // Assert
+    expect(type).toBe('string');
+  });
+
+  it('infers collections from parent each item properties', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <section each={ groups }>
+      <div each={ children }>
+        <p each={ sibling in parent.siblings }>{ sibling.label }</p>
+      </div>
+    </section>
+    <script>
+      this.groups = [{
+        children: [{}],
+        siblings: [{ label: 'Sibling' }],
+      }]
+    </script>
+  </root>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'void (sibling.label)',
+      'sibling',
+    );
+
+    // Assert
+    expect(type).toBe('{ label: string; }');
+  });
+
+  it('infers collections through multiple parent contexts', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <section each={ groups }>
+      <div each={ children }>
+        <p each={ item in parent.parent.items }>{ item.name }</p>
+      </div>
+    </section>
+    <script>
+      this.groups = [{ children: [{}] }]
+      this.items = [{ name: 'Root item' }]
+    </script>
+  </root>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(code, 'void (item.name)', 'item');
+
+    // Assert
+    expect(type).toBe('{ name: string; }');
+  });
+
   it('infers heterogeneous Riot v3 each item property types', () => {
     // Arrange
     const code = createVirtualCode(`

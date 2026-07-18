@@ -5,11 +5,11 @@ import type { TextRange } from '../types';
 import { findTemplateExpressionEnd } from './attributes';
 import { parseClassShorthandExpressions } from './classShorthand';
 import {
+  createEachCollectionExpression,
   getEachDepthForOffset,
   getEachScopes,
   getLocalDefinitionsForOffset,
   getLocalNamesForOffset,
-  parseEachExpression,
 } from './each';
 import type { EachScope, TemplateAnalysis, TemplateExpression } from './types';
 
@@ -61,29 +61,11 @@ function getTemplateExpressionsForSource(
     const expressionText = sourceText.slice(textStart, textEnd);
     const attributeName = getAttributeNameBeforeExpression(sourceText, offset);
     if (attributeName === 'each') {
-      const eachExpression = parseEachExpression(expressionText, textStart);
-      if (eachExpression) {
-        expressions.push({
-          kind: 'expression',
-          sourceOffset: eachExpression.collectionOffset,
-          text: eachExpression.collectionText,
-          localNames: getLocalNamesForOffset(
-            eachExpression.collectionOffset,
-            eachScopes,
-            textStart,
-          ),
-          localDefinitions: getLocalDefinitionsForOffset(
-            eachExpression.collectionOffset,
-            eachScopes,
-            textStart,
-          ),
-          eachDepth: getEachDepthForOffset(
-            eachExpression.collectionOffset,
-            eachScopes,
-            textStart,
-          ),
-          excludedEachScopeSourceOffset: textStart,
-        });
+      const eachScope = eachScopes.find(
+        (scope) => scope.sourceOffset === textStart,
+      );
+      if (eachScope) {
+        expressions.push(createEachCollectionExpression(eachScope));
       }
       offset = end;
       continue;

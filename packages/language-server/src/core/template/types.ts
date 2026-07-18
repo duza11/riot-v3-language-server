@@ -18,6 +18,8 @@ export interface EachScope {
   collectionOffset: number;
   collectionText: string;
   collectionLocalNames: string[];
+  collectionLocalDefinitions: EachLocalName[];
+  collectionEachDepth: number | undefined;
   depth: number;
   localNames: EachLocalName[];
 }
