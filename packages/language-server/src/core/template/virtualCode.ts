@@ -5,44 +5,50 @@ import {
   scanTemplateNonIdentifier,
 } from '../scanners';
 import type { GeneratedSegment } from '../types';
-import { getUsedEachLocalDefinitions } from './each';
+import {
+  getContainingEachScopes,
+  getUsedBareEachLocalDefinitions,
+} from './each';
 import {
   shouldMaskTemplateIdentifier,
   shouldPrefixTemplateIdentifier,
 } from './identifiers';
-import type { EachLocalName, TemplateExpression } from './types';
+import type { EachScope, TemplateExpression } from './types';
 
 const riotV3ScriptContextSuffix = `
 }
 `;
 
+interface TemplateTypeNames {
+  componentState: string;
+  templateContext: string;
+  templateInstance: string;
+}
+
 export function createTemplateVirtualCode(
   id: string,
   expressions: TemplateExpression[],
-  typeNames: { templateContext: string; eachTemplateContext: string },
+  eachScopes: EachScope[],
+  typeNames: TemplateTypeNames,
 ): VirtualCode {
   const segments: GeneratedSegment[] = [
     { text: getTemplateContextPrefix(typeNames.templateContext) },
   ];
   for (const expression of expressions) {
-    const eachContext =
-      expression.eachDepth === undefined
-        ? undefined
-        : getNestedEachContextTypeName(
-            typeNames.eachTemplateContext,
-            expression.eachDepth,
-          );
-    segments.push({
-      text: eachContext ? `{\n(function(this: ${eachContext}) {\n` : '{\n',
-    });
+    const containingScopes = getContainingEachScopes(
+      expression.sourceOffset,
+      eachScopes,
+      expression.excludedEachScopeSourceOffset,
+    );
+    segments.push({ text: '{\n' });
     segments.push(
-      ...generateEachLocalDeclarationSegments(
-        getUsedEachLocalDefinitions(expression),
+      ...generateScopedExpressionSegments(
+        expression,
+        containingScopes,
+        typeNames,
       ),
     );
-    segments.push({ text: 'void (' });
-    segments.push(...generateTemplateExpressionSegments(expression));
-    segments.push({ text: eachContext ? ');\n});\n}\n' : ');\n}\n' });
+    segments.push({ text: '}\n' });
   }
   segments.push({ text: riotV3ScriptContextSuffix });
 
@@ -126,48 +132,101 @@ export function createTemplateVirtualCode(
   };
 }
 
-function generateEachLocalDeclarationSegments(
-  localNames: EachLocalName[],
+function generateScopedExpressionSegments(
+  expression: TemplateExpression,
+  scopes: EachScope[],
+  typeNames: TemplateTypeNames,
 ): GeneratedSegment[] {
   const segments: GeneratedSegment[] = [];
-  const collectionNames = new Map<string, string>();
-  for (const localName of localNames) {
-    const collectionKey =
-      localName.collectionOffset + '\0' + localName.collectionText;
-    let collectionName = collectionNames.get(collectionKey);
-    if (!collectionName) {
-      collectionName = `__riot_v3_each_collection_${collectionNames.size}`;
-      collectionNames.set(collectionKey, collectionName);
-      segments.push({ text: `const ${collectionName} = ` });
-      segments.push(
-        ...generateTemplateExpressionSegments({
+  const usedLocalOffsets = new Set(
+    getUsedBareEachLocalDefinitions(expression).map(
+      (localName) => localName.sourceOffset,
+    ),
+  );
+  for (const scope of scopes) {
+    for (const localName of getUsedBareEachLocalDefinitions({
+      kind: 'expression',
+      sourceOffset: scope.collectionOffset,
+      text: scope.collectionText,
+      localNames: scope.collectionLocalNames,
+      localDefinitions: expression.localDefinitions,
+      eachDepth: undefined,
+    })) {
+      usedLocalOffsets.add(localName.sourceOffset);
+    }
+  }
+  let parentDataType = typeNames.componentState;
+  let parentContextType = typeNames.templateInstance;
+  for (let index = 0; index < scopes.length; index++) {
+    const scope = scopes[index];
+    const collectionName = `__riot_v3_each_collection_${index}`;
+    const dataName = `__riot_v3_each_data_${index}`;
+    const contextName = `__riot_v3_each_context_${index}`;
+    segments.push({ text: `const ${collectionName} = ` });
+    segments.push(
+      ...generateTemplateExpressionSegments(
+        {
           kind: 'expression',
-          sourceOffset: localName.collectionOffset,
-          text: localName.collectionText,
-          localNames: localName.collectionLocalNames,
+          sourceOffset: scope.collectionOffset,
+          text: scope.collectionText,
+          localNames: scope.collectionLocalNames,
           localDefinitions: [],
           eachDepth: undefined,
-        }),
-      );
-      segments.push({ text: ';\n' });
+        },
+        false,
+      ),
+    );
+    segments.push({ text: ';\n' });
+    const currentDataType = getEachCurrentDataType(scope, collectionName);
+    segments.push({
+      text: `type ${dataName} = RiotV3EachData<${currentDataType}, ${parentDataType}>;\n`,
+    });
+    segments.push({
+      text: `type ${contextName} = RiotV3TypedEachContext<${dataName}, ${parentContextType}>;\n`,
+    });
+    segments.push({ text: `(function(this: ${contextName}) {\n` });
+    for (const localName of scope.localNames) {
+      if (!usedLocalOffsets.has(localName.sourceOffset)) {
+        continue;
+      }
+      segments.push({ text: 'const ' });
+      segments.push({
+        text: localName.name,
+        sourceOffset: localName.sourceOffset,
+        length: localName.name.length,
+      });
+      segments.push({ text: ` = this.${localName.name};\n` });
     }
-    const helper =
-      localName.kind === 'item' ? 'RiotV3EachItem' : 'RiotV3EachIndex';
-    segments.push({ text: 'const ' });
-    segments.push({
-      text: localName.name,
-      sourceOffset: localName.sourceOffset,
-      length: localName.name.length,
-    });
-    segments.push({
-      text: ` = undefined as unknown as ${helper}<typeof ${collectionName}>;\n`,
-    });
+    parentDataType = dataName;
+    parentContextType = contextName;
+  }
+  segments.push({ text: 'void (' });
+  segments.push(...generateTemplateExpressionSegments(expression));
+  segments.push({ text: ');\n' });
+  for (let index = scopes.length - 1; index >= 0; index--) {
+    segments.push({ text: '});\n' });
   }
   return segments;
 }
 
+function getEachCurrentDataType(
+  scope: EachScope,
+  collectionName: string,
+): string {
+  if (scope.kind === 'shorthand') {
+    return `RiotV3EachItem<typeof ${collectionName}>`;
+  }
+  const properties = scope.localNames.map((localName) => {
+    const helper =
+      localName.kind === 'item' ? 'RiotV3EachItem' : 'RiotV3EachIndex';
+    return `${localName.name}: ${helper}<typeof ${collectionName}>;`;
+  });
+  return `{ ${properties.join(' ')} }`;
+}
+
 function generateTemplateExpressionSegments(
   expression: TemplateExpression,
+  mapSource = true,
 ): GeneratedSegment[] {
   const segments: GeneratedSegment[] = [];
   const text = expression.text;
@@ -188,8 +247,12 @@ function generateTemplateExpressionSegments(
       if (expression.localNames.includes(identifier)) {
         segments.push({
           text: identifier,
-          sourceOffset: expression.sourceOffset + start,
-          length: identifier.length,
+          ...(mapSource
+            ? {
+                sourceOffset: expression.sourceOffset + start,
+                length: identifier.length,
+              }
+            : {}),
         });
       } else if (
         shouldMaskTemplateIdentifier(
@@ -201,21 +264,33 @@ function generateTemplateExpressionSegments(
       ) {
         segments.push({
           text: '({} as any)',
-          sourceOffset: expression.sourceOffset + start,
-          length: identifier.length,
+          ...(mapSource
+            ? {
+                sourceOffset: expression.sourceOffset + start,
+                length: identifier.length,
+              }
+            : {}),
         });
       } else if (shouldPrefixTemplateIdentifier(text, start, identifier)) {
         segments.push({ text: 'this.' });
         segments.push({
           text: identifier,
-          sourceOffset: expression.sourceOffset + start,
-          length: identifier.length,
+          ...(mapSource
+            ? {
+                sourceOffset: expression.sourceOffset + start,
+                length: identifier.length,
+              }
+            : {}),
         });
       } else {
         segments.push({
           text: identifier,
-          sourceOffset: expression.sourceOffset + start,
-          length: identifier.length,
+          ...(mapSource
+            ? {
+                sourceOffset: expression.sourceOffset + start,
+                length: identifier.length,
+              }
+            : {}),
         });
       }
       continue;
@@ -227,10 +302,6 @@ function generateTemplateExpressionSegments(
   }
 
   return segments;
-}
-
-function getNestedEachContextTypeName(baseName: string, depth: number): string {
-  return depth === 0 ? baseName : `${baseName}_${depth}`;
 }
 
 function createTemplateCompletionSegment(

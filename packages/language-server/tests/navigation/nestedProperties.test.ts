@@ -321,6 +321,125 @@ describe('nested property navigation', () => {
     ]);
   });
 
+  it('renames array element properties through explicit each this contexts', () => {
+    // Arrange
+    const source = `
+  <demo-widget>
+    <p each={ item in items }>{ item.name } { this.item.name }</p>
+    <script>
+      this.items = [{ name: 'Alice' }]
+    </script>
+  </demo-widget>
+  `;
+    const position = offsetOf(source, "{ name: 'Alice' }", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ item.name }', 'name'),
+      offsetOf(source, '{ this.item.name }', 'name'),
+    ]);
+  });
+
+  it('renames array element properties through shorthand each this contexts', () => {
+    // Arrange
+    const source = `
+  <demo-widget>
+    <p each={ items }>{ name } { this.name }</p>
+    <script>
+      this.items = [{ name: 'Alice' }]
+    </script>
+  </demo-widget>
+  `;
+    const position = offsetOf(source, "{ name: 'Alice' }", 'name');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'displayName');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ name }', 'name'),
+      offsetOf(source, '{ this.name }', 'name'),
+    ]);
+  });
+
+  it('finds the same shorthand each property references from this', () => {
+    // Arrange
+    const source = `
+  <demo-widget>
+    <p each={ items }>{ name } { this.name }</p>
+    <script>
+      this.items = [{ name: 'Alice' }]
+    </script>
+  </demo-widget>
+  `;
+    const position = offsetOf(source, '{ this.name }', 'name');
+
+    // Act
+    const references = getRiotV3ReferenceRanges(source, position);
+
+    // Assert
+    expect(startsOf(references)).toEqual([
+      offsetOf(source, "{ name: 'Alice' }", 'name'),
+      offsetOf(source, '{ name }', 'name'),
+      offsetOf(source, '{ this.name }', 'name'),
+    ]);
+  });
+
+  it('renames shorthand properties nested in explicit each scopes', () => {
+    // Arrange
+    const source = `
+  <demo-widget>
+    <section each={ group in groups }>
+      <p each={ group.children }>{ label } { this.label }</p>
+    </section>
+    <script>
+      this.groups = [{ children: [{ label: 'Child' }] }]
+    </script>
+  </demo-widget>
+  `;
+    const position = offsetOf(source, "{ label: 'Child' }", 'label');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'title');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "{ label: 'Child' }", 'label'),
+      offsetOf(source, '{ label }', 'label'),
+      offsetOf(source, '{ this.label }', 'label'),
+    ]);
+  });
+
+  it('does not rename class shorthand keys with item properties', () => {
+    // Arrange
+    const source = `
+  <demo-widget>
+    <p each={ items } class={ active: this.active }></p>
+    <script>
+      this.items = [{ active: true }]
+    </script>
+  </demo-widget>
+  `;
+    const position = offsetOf(source, '{ active: true }', 'active');
+    const classExpression = 'active: this.active';
+    const valueOffset =
+      offsetOf(source, classExpression) + classExpression.lastIndexOf('active');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'enabled');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, '{ active: true }', 'active'),
+      valueOffset,
+    ]);
+  });
+
   it('renames properties referenced from nested each scopes', () => {
     // Arrange
     const source = `

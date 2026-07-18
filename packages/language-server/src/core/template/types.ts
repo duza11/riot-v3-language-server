@@ -7,9 +7,11 @@ export interface TemplateExpression {
   localNames: string[];
   localDefinitions: EachLocalName[];
   eachDepth: number | undefined;
+  excludedEachScopeSourceOffset?: number;
 }
 
 export interface EachScope {
+  kind: 'shorthand' | 'explicit';
   start: number;
   end: number;
   sourceOffset: number;
@@ -32,5 +34,4 @@ export interface EachLocalName {
 export interface TemplateAnalysis {
   expressions: TemplateExpression[];
   eachScopes: EachScope[];
-  eachDepthCount: number;
 }
