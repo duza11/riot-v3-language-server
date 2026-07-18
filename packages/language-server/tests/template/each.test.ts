@@ -2,8 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   getTemplateIdentifierType,
   getTemplateSemanticDiagnostics,
+  getTemplateSourceQuickInfo,
+  getTemplateSourceSemanticDiagnostics,
 } from '../helpers/typescript';
-import { createVirtualCode, getTemplateText } from '../helpers/virtualCode';
+import {
+  createVirtualCode,
+  getTemplateText,
+  offsetOf,
+} from '../helpers/virtualCode';
 
 describe('each template expressions', () => {
   it('supports Riot v3 each item in collection syntax', () => {
@@ -199,6 +205,250 @@ describe('each template expressions', () => {
     // Act
     const diagnostics = getTemplateSemanticDiagnostics([code], {
       noUnusedLocals: true,
+    });
+
+    // Assert
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.code === 6133),
+    ).toEqual([]);
+  });
+
+  it('provides hover information for each locals referenced through this', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ message, i in list }>
+      <p>{ this.message } { this.i }</p>
+    </div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `;
+    const code = createVirtualCode(source);
+
+    // Act
+    const messageQuickInfo = getTemplateSourceQuickInfo(
+      code,
+      offsetOf(source, 'message, i in list', 'message'),
+    );
+    const indexQuickInfo = getTemplateSourceQuickInfo(
+      code,
+      offsetOf(source, 'message, i in list', 'i in'),
+    );
+
+    // Assert
+    expect(messageQuickInfo).toBe('const message: string');
+    expect(indexQuickInfo).toBe('const i: number');
+  });
+
+  it('provides hover information for each locals referenced by bare names', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ message in list }>{ message }</div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `;
+    const code = createVirtualCode(source);
+
+    // Act
+    const quickInfo = getTemplateSourceQuickInfo(
+      code,
+      offsetOf(source, 'message in list', 'message'),
+    );
+
+    // Assert
+    expect(quickInfo).toBe('const message: string');
+  });
+
+  it('provides hover information for unused each locals', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ message in list }></div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `;
+    const code = createVirtualCode(source);
+
+    // Act
+    const quickInfo = getTemplateSourceQuickInfo(
+      code,
+      offsetOf(source, 'message in list', 'message'),
+    );
+
+    // Assert
+    expect(quickInfo).toBe('const message: string');
+  });
+
+  it('reports unused each locals when noUnusedLocals is enabled', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ message, i in list }></div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `;
+    const code = createVirtualCode(source);
+
+    // Act
+    const diagnostics = getTemplateSourceSemanticDiagnostics(code, {
+      noUnusedLocals: true,
+    }).filter(({ diagnostic }) => diagnostic.code === 6133);
+
+    // Assert
+    expect(diagnostics.map(({ diagnostic }) => diagnostic.messageText)).toEqual(
+      [
+        "'message' is declared but its value is never read.",
+        "'i' is declared but its value is never read.",
+      ],
+    );
+    expect(diagnostics.map(({ sourceOffset }) => sourceOffset)).toEqual([
+      offsetOf(source, 'message, i'),
+      offsetOf(source, 'i in list'),
+    ]);
+  });
+
+  it('does not report bare each local references as unused', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <div each={ message in list }>{ message }</div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    });
+
+    // Assert
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.code === 6133),
+    ).toEqual([]);
+  });
+
+  it('does not report each locals used by nested collections as unused', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <div each={ group in groups }>
+      <p each={ item in group.items }>{ item.name }</p>
+    </div>
+    <script>
+      this.groups = [{ items: [{ name: 'Item' }] }]
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    });
+
+    // Assert
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.code === 6133),
+    ).toEqual([]);
+  });
+
+  it('does not report each locals used by class shorthand values as unused', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <div each={ item in items } class={ active: this.item.active }></div>
+    <script>
+      this.items = [{ active: true }]
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    });
+
+    // Assert
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.code === 6133),
+    ).toEqual([]);
+  });
+
+  it('does not treat class shorthand keys as each local references', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <div each={ active in flags } class={ active: true }></div>
+    <script>
+      this.flags = [true]
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    }).filter((diagnostic) => diagnostic.code === 6133);
+
+    // Assert
+    expect(diagnostics.map((diagnostic) => diagnostic.messageText)).toEqual([
+      "'active' is declared but its value is never read.",
+    ]);
+  });
+
+  it('tracks unused shadowed each locals independently', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ item in groups }>
+      <p each={ item in items }>{ item.name }</p>
+    </div>
+    <script>
+      this.groups = [{}]
+      this.items = [{ name: 'Item' }]
+    </script>
+  </root>
+  `;
+    const code = createVirtualCode(source);
+
+    // Act
+    const diagnostics = getTemplateSourceSemanticDiagnostics(code, {
+      noUnusedLocals: true,
+    }).filter(({ diagnostic }) => diagnostic.code === 6133);
+
+    // Assert
+    expect(diagnostics.map(({ diagnostic }) => diagnostic.messageText)).toEqual(
+      ["'item' is declared but its value is never read."],
+    );
+    expect(diagnostics.map(({ sourceOffset }) => sourceOffset)).toEqual([
+      offsetOf(source, 'item in groups'),
+    ]);
+  });
+
+  it('does not report unused each locals when noUnusedLocals is disabled', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <div each={ message in list }></div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: false,
     });
 
     // Assert
