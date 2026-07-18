@@ -35,6 +35,7 @@ export function createTemplateVirtualCode(
   const segments: GeneratedSegment[] = [
     { text: getTemplateContextPrefix(typeNames.templateContext) },
   ];
+  segments.push(...generateEachLocalBindingSegments(eachScopes, typeNames));
   for (const expression of expressions) {
     const containingScopes = getContainingEachScopes(
       expression.sourceOffset,
@@ -143,13 +144,50 @@ function generateScopedExpressionSegments(
     scopes,
     typeNames,
     usedLocalOffsets,
-    usedLocalOffsets,
+    new Set(),
     [
       { text: 'void (' },
       ...generateTemplateExpressionSegments(expression),
       { text: ');\n' },
     ],
   );
+}
+
+function generateEachLocalBindingSegments(
+  eachScopes: EachScope[],
+  typeNames: TemplateTypeNames,
+): GeneratedSegment[] {
+  const segments: GeneratedSegment[] = [];
+  for (const targetScope of eachScopes) {
+    if (!targetScope.localNames.length) {
+      continue;
+    }
+    const scopes = getContainingEachScopes(
+      targetScope.sourceOffset,
+      eachScopes,
+    );
+    const targetLocalOffsets = new Set(
+      targetScope.localNames.map((localName) => localName.sourceOffset),
+    );
+    const localOffsets = getRequiredEachCollectionLocalOffsets(scopes);
+    for (const sourceOffset of targetLocalOffsets) {
+      localOffsets.add(sourceOffset);
+    }
+    segments.push({ text: '{\n' });
+    segments.push(
+      ...generateEachContextSegments(
+        scopes,
+        typeNames,
+        localOffsets,
+        targetLocalOffsets,
+        targetScope.localNames.map((localName) => ({
+          text: `void ${localName.name};\n`,
+        })),
+      ),
+    );
+    segments.push({ text: '}\n' });
+  }
+  return segments;
 }
 
 function getRequiredBareEachLocalOffsets(
@@ -161,6 +199,16 @@ function getRequiredBareEachLocalOffsets(
       (localName) => localName.sourceOffset,
     ),
   );
+  for (const sourceOffset of getRequiredEachCollectionLocalOffsets(scopes)) {
+    offsets.add(sourceOffset);
+  }
+  return offsets;
+}
+
+function getRequiredEachCollectionLocalOffsets(
+  scopes: EachScope[],
+): Set<number> {
+  const offsets = new Set<number>();
   for (const scope of scopes) {
     for (const localName of getUsedBareEachLocalDefinitions(
       createEachCollectionExpression(scope),

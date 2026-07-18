@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   getTemplateIdentifierType,
   getTemplateSemanticDiagnostics,
+  getTemplateSourceQuickInfo,
 } from '../helpers/typescript';
-import { createVirtualCode, getTemplateText } from '../helpers/virtualCode';
+import {
+  createVirtualCode,
+  getTemplateText,
+  offsetOf,
+} from '../helpers/virtualCode';
 
 describe('each template expressions', () => {
   it('supports Riot v3 each item in collection syntax', () => {
@@ -205,6 +210,79 @@ describe('each template expressions', () => {
     expect(
       diagnostics.filter((diagnostic) => diagnostic.code === 6133),
     ).toEqual([]);
+  });
+
+  it('provides hover information for each locals referenced through this', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ message, i in list }>
+      <p>{ this.message } { this.i }</p>
+    </div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `;
+    const code = createVirtualCode(source);
+
+    // Act
+    const messageQuickInfo = getTemplateSourceQuickInfo(
+      code,
+      offsetOf(source, 'message, i in list', 'message'),
+    );
+    const indexQuickInfo = getTemplateSourceQuickInfo(
+      code,
+      offsetOf(source, 'message, i in list', 'i in'),
+    );
+
+    // Assert
+    expect(messageQuickInfo).toBe('const message: string');
+    expect(indexQuickInfo).toBe('const i: number');
+  });
+
+  it('provides hover information for each locals referenced by bare names', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ message in list }>{ message }</div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `;
+    const code = createVirtualCode(source);
+
+    // Act
+    const quickInfo = getTemplateSourceQuickInfo(
+      code,
+      offsetOf(source, 'message in list', 'message'),
+    );
+
+    // Assert
+    expect(quickInfo).toBe('const message: string');
+  });
+
+  it('provides hover information for unused each locals', () => {
+    // Arrange
+    const source = `
+  <root>
+    <div each={ message in list }></div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `;
+    const code = createVirtualCode(source);
+
+    // Act
+    const quickInfo = getTemplateSourceQuickInfo(
+      code,
+      offsetOf(source, 'message in list', 'message'),
+    );
+
+    // Assert
+    expect(quickInfo).toBe('const message: string');
   });
 
   it('infers mixed shorthand and explicit nested each contexts', () => {

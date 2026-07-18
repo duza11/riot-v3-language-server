@@ -1,6 +1,6 @@
 import * as ts from 'typescript';
 import type { RiotV3VirtualCode } from '../../src/languagePlugin';
-import { getEmbeddedText } from './virtualCode';
+import { getEmbeddedCode, getEmbeddedText } from './virtualCode';
 
 export function getTemplateIdentifierType(
   code: RiotV3VirtualCode,
@@ -48,6 +48,33 @@ export function getTemplateIdentifierQuickInfo(
     marker,
     identifier,
   );
+}
+
+export function getTemplateSourceQuickInfo(
+  code: RiotV3VirtualCode,
+  sourceOffset: number,
+): string | undefined {
+  const embedded = getEmbeddedCode(code, 'template');
+  for (const mapping of embedded.mappings) {
+    for (let index = 0; index < mapping.sourceOffsets.length; index++) {
+      const mappedSourceOffset = mapping.sourceOffsets[index];
+      const length = mapping.lengths[index];
+      if (
+        sourceOffset < mappedSourceOffset ||
+        sourceOffset >= mappedSourceOffset + length
+      ) {
+        continue;
+      }
+      const generatedOffset =
+        mapping.generatedOffsets[index] + sourceOffset - mappedSourceOffset;
+      return getEmbeddedQuickInfoAtOffset(
+        code,
+        'template',
+        '/virtual/riot-template.ts',
+        generatedOffset,
+      );
+    }
+  }
 }
 
 function getEmbeddedIdentifierType(
@@ -132,6 +159,25 @@ function getEmbeddedIdentifierQuickInfo(
 ): string {
   const text = getEmbeddedText(code, embeddedCodeId);
   const identifierOffset = getIdentifierOffset(text, marker, identifier);
+  const quickInfo = getEmbeddedQuickInfoAtOffset(
+    code,
+    embeddedCodeId,
+    fileName,
+    identifierOffset,
+  );
+  if (!quickInfo) {
+    throw new Error(`Quick info for "${identifier}" was not found.`);
+  }
+  return quickInfo;
+}
+
+function getEmbeddedQuickInfoAtOffset(
+  code: RiotV3VirtualCode,
+  embeddedCodeId: string,
+  fileName: string,
+  identifierOffset: number,
+): string | undefined {
+  const text = getEmbeddedText(code, embeddedCodeId);
   const globalTypesFileName = '/virtual/riot-v3-globals.d.ts';
   const files = new Map([
     [globalTypesFileName, getEmbeddedText(code, 'riot_v3_globals')],
@@ -168,10 +214,9 @@ function getEmbeddedIdentifierQuickInfo(
   };
   const service = ts.createLanguageService(host);
   const quickInfo = service.getQuickInfoAtPosition(fileName, identifierOffset);
-  if (!quickInfo) {
-    throw new Error(`Quick info for "${identifier}" was not found.`);
-  }
-  return ts.displayPartsToString(quickInfo.displayParts);
+  return quickInfo
+    ? ts.displayPartsToString(quickInfo.displayParts)
+    : undefined;
 }
 
 function getIdentifierOffset(
