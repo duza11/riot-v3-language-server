@@ -9,6 +9,7 @@ import {
   createEachCollectionExpression,
   getContainingEachScopes,
   getUsedBareEachLocalDefinitions,
+  getUsedEachLocalDefinitionOffsets,
 } from './each';
 import {
   shouldMaskTemplateIdentifier,
@@ -35,7 +36,13 @@ export function createTemplateVirtualCode(
   const segments: GeneratedSegment[] = [
     { text: getTemplateContextPrefix(typeNames.templateContext) },
   ];
-  segments.push(...generateEachLocalBindingSegments(eachScopes, typeNames));
+  segments.push(
+    ...generateEachLocalBindingSegments(
+      eachScopes,
+      typeNames,
+      getUsedEachLocalDefinitionOffsets(expressions),
+    ),
+  );
   for (const expression of expressions) {
     const containingScopes = getContainingEachScopes(
       expression.sourceOffset,
@@ -156,6 +163,7 @@ function generateScopedExpressionSegments(
 function generateEachLocalBindingSegments(
   eachScopes: EachScope[],
   typeNames: TemplateTypeNames,
+  usedLocalOffsets: Set<number>,
 ): GeneratedSegment[] {
   const segments: GeneratedSegment[] = [];
   for (const targetScope of eachScopes) {
@@ -180,9 +188,11 @@ function generateEachLocalBindingSegments(
         typeNames,
         localOffsets,
         targetLocalOffsets,
-        targetScope.localNames.map((localName) => ({
-          text: `void ${localName.name};\n`,
-        })),
+        targetScope.localNames
+          .filter((localName) => usedLocalOffsets.has(localName.sourceOffset))
+          .map((localName) => ({
+            text: `void ${localName.name};\n`,
+          })),
       ),
     );
     segments.push({ text: '}\n' });

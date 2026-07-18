@@ -261,6 +261,42 @@ export function getTemplateSemanticDiagnostics(
   );
 }
 
+export function getTemplateSourceSemanticDiagnostics(
+  code: RiotV3VirtualCode,
+  compilerOptions: ts.CompilerOptions = {},
+): Array<{ diagnostic: ts.Diagnostic; sourceOffset: number | undefined }> {
+  const embedded = getEmbeddedCode(code, 'template');
+  return getTemplateSemanticDiagnostics([code], compilerOptions).map(
+    (diagnostic) => ({
+      diagnostic,
+      sourceOffset:
+        diagnostic.start === undefined
+          ? undefined
+          : getMappedSourceOffset(embedded.mappings, diagnostic.start),
+    }),
+  );
+}
+
+function getMappedSourceOffset(
+  mappings: RiotV3VirtualCode['embeddedCodes'][number]['mappings'],
+  generatedOffset: number,
+): number | undefined {
+  for (const mapping of mappings) {
+    for (let index = 0; index < mapping.generatedOffsets.length; index++) {
+      const mappedGeneratedOffset = mapping.generatedOffsets[index];
+      const length = mapping.lengths[index];
+      if (
+        generatedOffset >= mappedGeneratedOffset &&
+        generatedOffset < mappedGeneratedOffset + length
+      ) {
+        return (
+          mapping.sourceOffsets[index] + generatedOffset - mappedGeneratedOffset
+        );
+      }
+    }
+  }
+}
+
 function createVirtualProgram(
   sourceFiles: ts.SourceFile[],
   options: ts.CompilerOptions,

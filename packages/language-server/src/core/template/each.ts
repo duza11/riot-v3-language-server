@@ -331,6 +331,35 @@ export function getUsedBareEachLocalDefinitions(
   );
 }
 
+export function getUsedEachLocalDefinitionOffsets(
+  expressions: TemplateExpression[],
+): Set<number> {
+  const offsets = new Set<number>();
+  for (const expression of expressions) {
+    const text = expression.text;
+    for (let offset = 0; offset < text.length; ) {
+      if (!isIdentifierStart(text[offset])) {
+        offset = scanTemplateNonIdentifier(text, offset);
+        continue;
+      }
+      const start = offset;
+      offset++;
+      while (offset < text.length && isIdentifierPart(text[offset])) {
+        offset++;
+      }
+      const localName = getResolvedEachLocalName(
+        expression,
+        start,
+        text.slice(start, offset),
+      );
+      if (localName) {
+        offsets.add(localName.sourceOffset);
+      }
+    }
+  }
+  return offsets;
+}
+
 export function getResolvedEachLocalName(
   expression: TemplateExpression,
   offset: number,
