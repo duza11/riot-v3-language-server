@@ -138,8 +138,25 @@ function generateScopedExpressionSegments(
   scopes: EachScope[],
   typeNames: TemplateTypeNames,
 ): GeneratedSegment[] {
-  const segments: GeneratedSegment[] = [];
-  const usedLocalOffsets = new Set(
+  const usedLocalOffsets = getRequiredBareEachLocalOffsets(expression, scopes);
+  return generateEachContextSegments(
+    scopes,
+    typeNames,
+    usedLocalOffsets,
+    usedLocalOffsets,
+    [
+      { text: 'void (' },
+      ...generateTemplateExpressionSegments(expression),
+      { text: ');\n' },
+    ],
+  );
+}
+
+function getRequiredBareEachLocalOffsets(
+  expression: TemplateExpression,
+  scopes: EachScope[],
+): Set<number> {
+  const offsets = new Set(
     getUsedBareEachLocalDefinitions(expression).map(
       (localName) => localName.sourceOffset,
     ),
@@ -148,9 +165,20 @@ function generateScopedExpressionSegments(
     for (const localName of getUsedBareEachLocalDefinitions(
       createEachCollectionExpression(scope),
     )) {
-      usedLocalOffsets.add(localName.sourceOffset);
+      offsets.add(localName.sourceOffset);
     }
   }
+  return offsets;
+}
+
+function generateEachContextSegments(
+  scopes: EachScope[],
+  typeNames: TemplateTypeNames,
+  localOffsets: Set<number>,
+  mappedLocalOffsets: Set<number>,
+  bodySegments: GeneratedSegment[],
+): GeneratedSegment[] {
+  const segments: GeneratedSegment[] = [];
   let parentDataType = typeNames.componentState;
   let parentContextType = typeNames.templateInstance;
   for (let index = 0; index < scopes.length; index++) {
@@ -175,23 +203,25 @@ function generateScopedExpressionSegments(
     });
     segments.push({ text: `(function(this: ${contextName}) {\n` });
     for (const localName of scope.localNames) {
-      if (!usedLocalOffsets.has(localName.sourceOffset)) {
+      if (!localOffsets.has(localName.sourceOffset)) {
         continue;
       }
       segments.push({ text: 'const ' });
       segments.push({
         text: localName.name,
-        sourceOffset: localName.sourceOffset,
-        length: localName.name.length,
+        ...(mappedLocalOffsets.has(localName.sourceOffset)
+          ? {
+              sourceOffset: localName.sourceOffset,
+              length: localName.name.length,
+            }
+          : {}),
       });
       segments.push({ text: ` = this.${localName.name};\n` });
     }
     parentDataType = dataName;
     parentContextType = contextName;
   }
-  segments.push({ text: 'void (' });
-  segments.push(...generateTemplateExpressionSegments(expression));
-  segments.push({ text: ');\n' });
+  segments.push(...bodySegments);
   for (let index = scopes.length - 1; index >= 0; index--) {
     segments.push({ text: '});\n' });
   }
