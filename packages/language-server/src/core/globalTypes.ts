@@ -161,7 +161,7 @@ function getGeneratedPropertyTypeName(
   options: RiotV3LanguageOptions,
 ): string {
   if (
-    options.allowDynamicObjectProperties &&
+    options.allowDynamicPropertiesFromAnyAssignments &&
     property.typeOrigin === 'inferred' &&
     property.hasInferredAnyAssignment
   ) {

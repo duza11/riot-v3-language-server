@@ -45,8 +45,8 @@ export async function activate(context: vscode.ExtensionContext) {
         tsdk: tsdk.tsdk,
       },
       riotV3: {
-        allowDynamicObjectProperties: riotV3Configuration.get(
-          'allowDynamicObjectProperties',
+        allowDynamicPropertiesFromAnyAssignments: riotV3Configuration.get(
+          'allowDynamicPropertiesFromAnyAssignments',
           false,
         ),
       },

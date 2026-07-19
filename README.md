@@ -23,11 +23,11 @@ Inferred object properties are strict by default. VS Code users can enable dynam
 
 ```json
 {
-  "riotV3.allowDynamicObjectProperties": true
+  "riotV3.allowDynamicPropertiesFromAnyAssignments": true
 }
 ```
 
-Standalone LSP clients can use `initializationOptions.riotV3.allowDynamicObjectProperties`. See the package READMEs for configuration details and embedded language settings.
+Standalone LSP clients can use `initializationOptions.riotV3.allowDynamicPropertiesFromAnyAssignments`. See the package READMEs for configuration details and embedded language settings.
 
 ## Development
 

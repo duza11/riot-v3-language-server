@@ -52,7 +52,7 @@ describe('riotV3LanguagePlugin', () => {
   it('passes dynamic object property options to virtual code', () => {
     // Arrange
     const plugin = createRiotV3LanguagePlugin({
-      allowDynamicObjectProperties: true,
+      allowDynamicPropertiesFromAnyAssignments: true,
     });
     const snapshot = ts.ScriptSnapshot.fromString(`
 <demo-widget>

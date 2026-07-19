@@ -45,14 +45,14 @@ Riot.js projects do not need to install TypeScript locally unless they want the 
 
 ## Configuration
 
-### Dynamic object properties
+### Dynamic properties from any assignments
 
-The language server keeps inferred object properties strict by default. Set `initializationOptions.riotV3.allowDynamicObjectProperties` to `true` to allow unknown child properties when a component property is also assigned a value inferred as `any`.
+The language server keeps inferred object properties strict by default. Set `initializationOptions.riotV3.allowDynamicPropertiesFromAnyAssignments` to `true` to allow dynamic child properties when a component property is also assigned a value inferred as `any`.
 
 ```lua
 init_options = {
   riotV3 = {
-    allowDynamicObjectProperties = true,
+    allowDynamicPropertiesFromAnyAssignments = true,
   },
 }
 ```
@@ -86,7 +86,7 @@ vim.lsp.config("riot_v3", {
     },
     riotV3 = {
       -- Optional. Defaults to false.
-      -- allowDynamicObjectProperties = true,
+      -- allowDynamicPropertiesFromAnyAssignments = true,
     },
   },
 })

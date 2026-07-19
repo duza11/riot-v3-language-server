@@ -947,7 +947,7 @@ describe('global type virtual code', () => {
     expect(diagnostics).toHaveLength(1);
   });
 
-  it('allows unknown object properties after any assignments when enabled', () => {
+  it('allows dynamic properties from any assignments when enabled', () => {
     // Arrange
     const code = createVirtualCode(
       `
@@ -960,7 +960,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act
@@ -974,7 +974,7 @@ describe('global type virtual code', () => {
     );
   });
 
-  it('preserves known property types when dynamic object properties are enabled', () => {
+  it('preserves known property types when dynamic properties from any assignments are enabled', () => {
     // Arrange
     const code = createVirtualCode(
       `
@@ -987,7 +987,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act
@@ -1009,7 +1009,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act
@@ -1033,7 +1033,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act
@@ -1075,7 +1075,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act
@@ -1100,7 +1100,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act
@@ -1125,7 +1125,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act
@@ -1150,7 +1150,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act
@@ -1177,7 +1177,7 @@ describe('global type virtual code', () => {
 </demo-widget>
 `,
       undefined,
-      { allowDynamicObjectProperties: true },
+      { allowDynamicPropertiesFromAnyAssignments: true },
     );
 
     // Act

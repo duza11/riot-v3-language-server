@@ -16,13 +16,13 @@ No project-local TypeScript installation is required. The extension uses the wor
 
 ## Configuration
 
-### Dynamic object properties
+### Dynamic properties from any assignments
 
-The language server keeps inferred object properties strict by default. Enable the following setting to allow unknown child properties when a component property is also assigned a value inferred as `any`:
+The language server keeps inferred object properties strict by default. Enable the following setting to allow dynamic child properties when a component property is also assigned a value inferred as `any`:
 
 ```json
 {
-  "riotV3.allowDynamicObjectProperties": true
+  "riotV3.allowDynamicPropertiesFromAnyAssignments": true
 }
 ```
 
