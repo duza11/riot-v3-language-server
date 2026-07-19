@@ -43,6 +43,26 @@ Volar requires a TypeScript SDK. This language server resolves it in the followi
 
 Riot.js projects do not need to install TypeScript locally unless they want the language server to use a project-specific TypeScript version.
 
+## Configuration
+
+### Dynamic object properties
+
+The language server keeps inferred object properties strict by default. Set `initializationOptions.riotV3.allowDynamicObjectProperties` to `true` to allow unknown child properties when the same component property is also assigned a value inferred as `any`.
+
+```lua
+init_options = {
+  riotV3 = {
+    allowDynamicObjectProperties = true,
+  },
+}
+```
+
+Known child properties keep their inferred types. Properties without an inferred `any` assignment and properties with explicit JSDoc types remain strict. Restart the language server after changing initialization options.
+
+### Embedded languages
+
+The JavaScript, TypeScript, HTML, CSS, SCSS, Less, and Emmet services read their standard configuration sections through `workspace/configuration` when the LSP client supports it. These settings are provided by the embedded language services and are not Riot-specific options.
+
 ## Neovim Example
 
 Using Neovim's built-in LSP client:
@@ -63,6 +83,10 @@ vim.lsp.config("riot_v3", {
     typescript = {
       -- Optional. When omitted, the bundled TypeScript SDK is used.
       -- tsdk = "/path/to/node_modules/typescript/lib",
+    },
+    riotV3 = {
+      -- Optional. Defaults to false.
+      -- allowDynamicObjectProperties = true,
     },
   },
 })

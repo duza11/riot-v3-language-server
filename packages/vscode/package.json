@@ -37,6 +37,17 @@
   ],
   "main": "./dist/client.js",
   "contributes": {
+    "configuration": {
+      "title": "Riot.js v3",
+      "properties": {
+        "riotV3.allowDynamicObjectProperties": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Allow unknown child properties when an inferred object property is also assigned a value typed as any. Known child property types remain available. Requires reloading VS Code."
+        }
+      }
+    },
     "languages": [
       {
         "id": "riot_v3",

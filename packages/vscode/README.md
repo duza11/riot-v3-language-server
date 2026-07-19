@@ -14,6 +14,30 @@ Language support for Riot.js v3 single-file components in Visual Studio Code.
 
 No project-local TypeScript installation is required. The extension uses the workspace TypeScript SDK when available and falls back to the bundled TypeScript SDK.
 
+## Configuration
+
+### Dynamic object properties
+
+The language server keeps inferred object properties strict by default. Enable the following setting to allow unknown child properties when the same component property is also assigned a value inferred as `any`:
+
+```json
+{
+  "riotV3.allowDynamicObjectProperties": true
+}
+```
+
+For example, if `this.data` is first assigned an object literal and is also assigned `this.opts.data`, known child properties keep their inferred types while other child properties are treated as `any`. Properties without an inferred `any` assignment and properties with explicit JSDoc types remain strict.
+
+Reload VS Code after changing this setting.
+
+### TypeScript SDK
+
+The extension follows the standard VS Code `typescript.tsdk` setting when selecting a workspace TypeScript SDK.
+
+### Embedded languages
+
+JavaScript, TypeScript, HTML, CSS, SCSS, Less, and Emmet features use their corresponding standard VS Code settings. For example, `javascript.validate.enable`, `typescript.preferences`, `html.format`, `css.*`, and `emmet.*` are handled by the embedded language services rather than Riot-specific settings.
+
 ## Supported Files
 
 This extension activates for `.tag` files and targets Riot.js v3 syntax.

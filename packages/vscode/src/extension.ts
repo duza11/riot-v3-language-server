@@ -37,11 +37,18 @@ export async function activate(context: vscode.ExtensionContext) {
   if (!tsdk) {
     throw new Error('TypeScript SDK was not found.');
   }
+  const riotV3Configuration = vscode.workspace.getConfiguration('riotV3');
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ language: 'riot_v3' }],
     initializationOptions: {
       typescript: {
         tsdk: tsdk.tsdk,
+      },
+      riotV3: {
+        allowDynamicObjectProperties: riotV3Configuration.get(
+          'allowDynamicObjectProperties',
+          false,
+        ),
       },
     },
   };
