@@ -47,7 +47,7 @@ Riot.js projects do not need to install TypeScript locally unless they want the 
 
 ### Dynamic object properties
 
-The language server keeps inferred object properties strict by default. Set `initializationOptions.riotV3.allowDynamicObjectProperties` to `true` to allow unknown child properties when the same component property is also assigned a value inferred as `any`.
+The language server keeps inferred object properties strict by default. Set `initializationOptions.riotV3.allowDynamicObjectProperties` to `true` to allow unknown child properties when a component property is also assigned a value inferred as `any`.
 
 ```lua
 init_options = {
@@ -57,7 +57,7 @@ init_options = {
 }
 ```
 
-Known child properties keep their inferred types. Properties without an inferred `any` assignment and properties with explicit JSDoc types remain strict. Restart the language server after changing initialization options.
+Known child properties keep their inferred types. A `null` or `undefined` initializer is preserved as a nullable dynamic object, so optional chaining may still be required. Properties without an inferred `any` assignment, primitive properties, and properties with explicit JSDoc types remain strict. Restart the language server after changing initialization options.
 
 ### Embedded languages
 

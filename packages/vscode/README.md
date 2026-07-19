@@ -18,7 +18,7 @@ No project-local TypeScript installation is required. The extension uses the wor
 
 ### Dynamic object properties
 
-The language server keeps inferred object properties strict by default. Enable the following setting to allow unknown child properties when the same component property is also assigned a value inferred as `any`:
+The language server keeps inferred object properties strict by default. Enable the following setting to allow unknown child properties when a component property is also assigned a value inferred as `any`:
 
 ```json
 {
@@ -26,7 +26,7 @@ The language server keeps inferred object properties strict by default. Enable t
 }
 ```
 
-For example, if `this.data` is first assigned an object literal and is also assigned `this.opts.data`, known child properties keep their inferred types while other child properties are treated as `any`. Properties without an inferred `any` assignment and properties with explicit JSDoc types remain strict.
+For example, if `this.data` is first assigned an object literal and is also assigned `this.opts.data`, known child properties keep their inferred types while other child properties are treated as `any`. A `null` or `undefined` initializer is preserved as a nullable dynamic object, so optional chaining may still be required. Properties without an inferred `any` assignment, primitive properties, and properties with explicit JSDoc types remain strict.
 
 Reload VS Code after changing this setting.
 

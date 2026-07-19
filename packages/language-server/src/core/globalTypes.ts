@@ -163,12 +163,33 @@ function getGeneratedPropertyTypeName(
   if (
     options.allowDynamicObjectProperties &&
     property.typeOrigin === 'inferred' &&
-    property.hasInferredAnyAssignment &&
-    isObjectLiteralType(property.typeName)
+    property.hasInferredAnyAssignment
   ) {
-    return `${property.typeName} & Record<string, any>`;
+    return getDynamicObjectPropertyType(property) ?? property.typeName;
   }
   return property.typeName;
+}
+
+function getDynamicObjectPropertyType(
+  property: ScriptProperty,
+): string | undefined {
+  const members = property.unionTypeNames ?? [property.typeName];
+  if (
+    !members.every(
+      (typeName) => isObjectLiteralType(typeName) || isNullishType(typeName),
+    )
+  ) {
+    return;
+  }
+  const dynamicMembers = members.map((typeName) =>
+    isObjectLiteralType(typeName)
+      ? `${typeName} & Record<string, any>`
+      : typeName,
+  );
+  if (!members.some(isObjectLiteralType)) {
+    dynamicMembers.push('Record<string, any>');
+  }
+  return dynamicMembers.join(' | ');
 }
 
 function isObjectLiteralType(typeName: string): boolean {
@@ -177,6 +198,10 @@ function isObjectLiteralType(typeName: string): boolean {
     trimmed.startsWith('{') &&
     scanBalanced(trimmed, 0, '{', '}') === trimmed.length
   );
+}
+
+function isNullishType(typeName: string): boolean {
+  return typeName === 'null' || typeName === 'undefined';
 }
 
 export function getComponentTypeNames(index: number): {

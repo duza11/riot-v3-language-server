@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getTemplateIdentifierType,
   getTemplatePropertyDoesNotExistDiagnostics,
+  getTemplateSemanticDiagnostics,
 } from './helpers/typescript';
 import {
   createVirtualCode,
@@ -1028,6 +1029,150 @@ describe('global type virtual code', () => {
     /** @type {{ known: string }} */
     this.data = { known: 'value' }
     this.data = this.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('keeps null-initialized properties strict by default', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ data?.dynamic }</p>
+  <script>
+    this.data = null
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('allows dynamic properties after null and any assignments when enabled', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data?.dynamic }</p>
+  <script>
+    this.data = null
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain('data: null | Record<string, any>;');
+  });
+
+  it('allows dynamic properties after undefined and any assignments when enabled', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data?.dynamic }</p>
+  <script>
+    this.data = undefined
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain('data: undefined | Record<string, any>;');
+  });
+
+  it('preserves nullability diagnostics for direct dynamic property access', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data.dynamic }</p>
+  <script>
+    this.data = null
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].messageText).toMatch(/possibly 'null'/);
+  });
+
+  it('preserves inferred object shapes in nullable dynamic unions', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data?.dynamic }</p>
+  <script>
+    this.data = null
+    this.data = { known: 'value' }
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'data: null | { known: string; } & Record<string, any>;',
+    );
+  });
+
+  it('keeps primitive properties strict after any assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ value.dynamic }</p>
+  <script>
+    this.value = 'known'
+    this.value = this.opts.value
   </script>
 </demo-widget>
 `,
