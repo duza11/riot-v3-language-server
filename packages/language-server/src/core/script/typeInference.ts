@@ -61,6 +61,7 @@ export function createScriptPropertyFromAssignment(
     typeOrigin: assignment.typeOrigin,
     hasInferredAnyAssignment:
       path.length === 0 &&
+      assignment.isAssignment &&
       assignment.typeOrigin === 'inferred' &&
       assignment.typeName === 'any',
   };

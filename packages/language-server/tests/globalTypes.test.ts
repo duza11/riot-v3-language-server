@@ -1005,6 +1005,7 @@ describe('global type virtual code', () => {
   <p>{ data.dynamic }</p>
   <script>
     this.data = { known: 'value' }
+    console.log(this.data.known)
   </script>
 </demo-widget>
 `,
@@ -1085,6 +1086,52 @@ describe('global type virtual code', () => {
     // Assert
     expect(diagnostics).toEqual([]);
     expect(globals).toContain('data: null | Record<string, any>;');
+  });
+
+  it('keeps null-only properties strict when they are read in scripts', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data.dynamic }</p>
+  <script>
+    this.data = null
+    console.log(this.data?.dynamic)
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('data: null;');
+  });
+
+  it('keeps undefined-only properties strict when they are read in scripts', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data.dynamic }</p>
+  <script>
+    this.data = undefined
+    console.log(this.data?.dynamic)
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('data: undefined;');
   });
 
   it('allows dynamic properties after undefined and any assignments when enabled', () => {

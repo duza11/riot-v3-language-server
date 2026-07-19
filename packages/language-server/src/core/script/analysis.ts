@@ -376,6 +376,7 @@ function scanOwnerPropertyAssignment(
         ? assignedType.typeName
         : 'any',
     typeOrigin: assignedType?.typeOrigin ?? 'inferred',
+    isAssignment: assignedType !== undefined,
   };
 }
 
