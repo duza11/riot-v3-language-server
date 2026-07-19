@@ -1,12 +1,20 @@
 import * as ts from 'typescript';
 import { expect } from 'vitest';
-import { RiotV3VirtualCode } from '../../src/languagePlugin';
+import {
+  RiotV3VirtualCode,
+  type RiotV3VirtualCodeOptions,
+} from '../../src/languagePlugin';
 
 export function createVirtualCode(
   source: string,
   fileName?: string,
+  options?: RiotV3VirtualCodeOptions,
 ): RiotV3VirtualCode {
-  return new RiotV3VirtualCode(ts.ScriptSnapshot.fromString(source), fileName);
+  return new RiotV3VirtualCode(
+    ts.ScriptSnapshot.fromString(source),
+    fileName,
+    options,
+  );
 }
 
 export function getEmbeddedCode(

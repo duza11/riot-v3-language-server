@@ -36,6 +36,7 @@ export interface ScriptProperty {
   typeName: string;
   assignmentKind: 'replacement' | 'augmentation';
   typeOrigin: 'inferred' | 'explicit';
+  hasInferredAnyAssignment?: boolean;
   unionTypeNames?: string[];
 }
 

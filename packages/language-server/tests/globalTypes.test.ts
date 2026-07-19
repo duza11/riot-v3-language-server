@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getTemplatePropertyDoesNotExistDiagnostics } from './helpers/typescript';
+import {
+  getTemplateIdentifierType,
+  getTemplatePropertyDoesNotExistDiagnostics,
+} from './helpers/typescript';
 import {
   createVirtualCode,
   getGlobalTypesText,
@@ -922,5 +925,120 @@ describe('global type virtual code', () => {
     expect(
       getTemplatePropertyDoesNotExistDiagnostics([firstCode, secondCode]),
     ).toEqual([]);
+  });
+
+  it('reports unknown object properties after any assignments by default', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ data.dynamic }</p>
+  <script>
+    this.data = { known: 'value' }
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('allows unknown object properties after any assignments when enabled', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data.dynamic }</p>
+  <script>
+    this.data = { known: 'value' }
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'data: { known: string; } & Record<string, any>;',
+    );
+  });
+
+  it('preserves known property types when dynamic object properties are enabled', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data.known }</p>
+  <script>
+    this.data = { known: 'value' }
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const type = getTemplateIdentifierType(code, 'this.data.known', 'known');
+
+    // Assert
+    expect(type).toBe('string');
+  });
+
+  it('keeps inferred object types strict without any assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data.dynamic }</p>
+  <script>
+    this.data = { known: 'value' }
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('keeps explicit JSDoc object types strict after any assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data.dynamic }</p>
+  <script>
+    /** @type {{ known: string }} */
+    this.data = { known: 'value' }
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicObjectProperties: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
   });
 });

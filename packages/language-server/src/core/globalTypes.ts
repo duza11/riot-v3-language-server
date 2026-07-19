@@ -1,3 +1,5 @@
+import type { RiotV3LanguageOptions } from './options';
+import { scanBalanced } from './scanners';
 import type { GeneratedSegment, JSDocTypedef, ScriptProperty } from './types';
 
 const riotV3GlobalTypes = `
@@ -93,6 +95,7 @@ export interface GeneratedRiotV3GlobalTypes {
 export function generateRiotV3GlobalTypes(
   components: RiotV3GlobalTypesComponentData[],
   fileTypeScope?: string,
+  options: RiotV3LanguageOptions = {},
 ): GeneratedRiotV3GlobalTypes {
   const dynamicTypeSegments: GeneratedSegment[] = [
     {
@@ -125,7 +128,10 @@ export function generateRiotV3GlobalTypes(
       dynamicTypeSegments.push({
         text:
           ': ' +
-          resolveJSDocTypedefReferences(property.typeName, jsDocTypedefNames) +
+          resolveJSDocTypedefReferences(
+            getGeneratedPropertyTypeName(property, options),
+            jsDocTypedefNames,
+          ) +
           ';\n',
       });
     }
@@ -148,6 +154,29 @@ export function generateRiotV3GlobalTypes(
     text: riotV3GlobalTypes,
     segments: dynamicTypeSegments,
   };
+}
+
+function getGeneratedPropertyTypeName(
+  property: ScriptProperty,
+  options: RiotV3LanguageOptions,
+): string {
+  if (
+    options.allowDynamicObjectProperties &&
+    property.typeOrigin === 'inferred' &&
+    property.hasInferredAnyAssignment &&
+    isObjectLiteralType(property.typeName)
+  ) {
+    return `${property.typeName} & Record<string, any>`;
+  }
+  return property.typeName;
+}
+
+function isObjectLiteralType(typeName: string): boolean {
+  const trimmed = typeName.trim();
+  return (
+    trimmed.startsWith('{') &&
+    scanBalanced(trimmed, 0, '{', '}') === trimmed.length
+  );
 }
 
 export function getComponentTypeNames(index: number): {
