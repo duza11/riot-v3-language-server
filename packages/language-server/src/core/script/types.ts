@@ -5,6 +5,7 @@ export interface ScriptPropertyAssignment {
   sourceOffset: number;
   typeName: string;
   typeOrigin: ScriptProperty['typeOrigin'];
+  isAssignment: boolean;
 }
 
 export interface AssignedPropertyType {

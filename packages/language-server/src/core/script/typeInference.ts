@@ -59,6 +59,11 @@ export function createScriptPropertyFromAssignment(
       : assignment.typeName,
     assignmentKind: path.length ? 'augmentation' : 'replacement',
     typeOrigin: assignment.typeOrigin,
+    hasInferredAnyAssignment:
+      path.length === 0 &&
+      assignment.isAssignment &&
+      assignment.typeOrigin === 'inferred' &&
+      assignment.typeName === 'any',
   };
 }
 
@@ -83,17 +88,24 @@ export function mergeScriptProperty(
   if (next.typeOrigin === 'explicit' && next.assignmentKind === 'replacement') {
     return next;
   }
+  const hasInferredAnyAssignment =
+    existing.hasInferredAnyAssignment || next.hasInferredAnyAssignment;
   if (existing.typeName === 'any') {
-    return next;
+    return { ...next, hasInferredAnyAssignment };
   }
   if (next.typeName === 'any' || existing.typeName === next.typeName) {
-    return existing;
+    return { ...existing, hasInferredAnyAssignment };
   }
   if (next.assignmentKind === 'augmentation') {
     const typeName = mergePropertyTypes(existing.typeName, next.typeName);
     return typeName !== undefined
-      ? { ...existing, typeName, unionTypeNames: undefined }
-      : existing;
+      ? {
+          ...existing,
+          typeName,
+          hasInferredAnyAssignment,
+          unionTypeNames: undefined,
+        }
+      : { ...existing, hasInferredAnyAssignment };
   }
   const unionTypeNames = [
     ...(existing.unionTypeNames ?? [existing.typeName]),
@@ -102,6 +114,7 @@ export function mergeScriptProperty(
   return {
     ...existing,
     typeName: formatUnionType(unionTypeNames),
+    hasInferredAnyAssignment,
     unionTypeNames,
   };
 }

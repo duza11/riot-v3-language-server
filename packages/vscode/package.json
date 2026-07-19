@@ -37,6 +37,17 @@
   ],
   "main": "./dist/client.js",
   "contributes": {
+    "configuration": {
+      "title": "Riot.js v3",
+      "properties": {
+        "riotV3.allowDynamicPropertiesFromAnyAssignments": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Allow dynamic child properties when a component property is assigned a value typed as any. Known object shapes and nullish initializers are preserved. Requires reloading VS Code."
+        }
+      }
+    },
     "languages": [
       {
         "id": "riot_v3",

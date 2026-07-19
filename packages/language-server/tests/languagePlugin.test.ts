@@ -1,8 +1,12 @@
 import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { URI } from 'vscode-uri';
-import { RiotV3VirtualCode, riotV3LanguagePlugin } from '../src/languagePlugin';
-import { createVirtualCode } from './helpers/virtualCode';
+import {
+  createRiotV3LanguagePlugin,
+  RiotV3VirtualCode,
+  riotV3LanguagePlugin,
+} from '../src/languagePlugin';
+import { createVirtualCode, getGlobalTypesText } from './helpers/virtualCode';
 
 describe('riotV3LanguagePlugin', () => {
   it('detects Riot v3 tag files', () => {
@@ -43,6 +47,34 @@ describe('riotV3LanguagePlugin', () => {
     );
 
     expect(code).toBeUndefined();
+  });
+
+  it('passes dynamic object property options to virtual code', () => {
+    // Arrange
+    const plugin = createRiotV3LanguagePlugin({
+      allowDynamicPropertiesFromAnyAssignments: true,
+    });
+    const snapshot = ts.ScriptSnapshot.fromString(`
+<demo-widget>
+  <script>
+    this.data = { known: 'value' }
+    this.data = this.opts.data
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const code = plugin.createVirtualCode?.(
+      URI.file('/workspace/demo.tag'),
+      'riot_v3',
+      snapshot,
+    );
+
+    // Assert
+    expect(code).toBeInstanceOf(RiotV3VirtualCode);
+    expect(getGlobalTypesText(code as RiotV3VirtualCode)).toContain(
+      'data: { known: string; } & Record<string, any>;',
+    );
   });
 
   it('registers service scripts for generated Riot v3 embedded code', () => {

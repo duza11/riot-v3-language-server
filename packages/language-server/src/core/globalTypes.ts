@@ -1,3 +1,5 @@
+import type { RiotV3LanguageOptions } from './options';
+import { scanBalanced } from './scanners';
 import type { GeneratedSegment, JSDocTypedef, ScriptProperty } from './types';
 
 const riotV3GlobalTypes = `
@@ -93,6 +95,7 @@ export interface GeneratedRiotV3GlobalTypes {
 export function generateRiotV3GlobalTypes(
   components: RiotV3GlobalTypesComponentData[],
   fileTypeScope?: string,
+  options: RiotV3LanguageOptions = {},
 ): GeneratedRiotV3GlobalTypes {
   const dynamicTypeSegments: GeneratedSegment[] = [
     {
@@ -125,7 +128,10 @@ export function generateRiotV3GlobalTypes(
       dynamicTypeSegments.push({
         text:
           ': ' +
-          resolveJSDocTypedefReferences(property.typeName, jsDocTypedefNames) +
+          resolveJSDocTypedefReferences(
+            getGeneratedPropertyTypeName(property, options),
+            jsDocTypedefNames,
+          ) +
           ';\n',
       });
     }
@@ -148,6 +154,54 @@ export function generateRiotV3GlobalTypes(
     text: riotV3GlobalTypes,
     segments: dynamicTypeSegments,
   };
+}
+
+function getGeneratedPropertyTypeName(
+  property: ScriptProperty,
+  options: RiotV3LanguageOptions,
+): string {
+  if (
+    options.allowDynamicPropertiesFromAnyAssignments &&
+    property.typeOrigin === 'inferred' &&
+    property.hasInferredAnyAssignment
+  ) {
+    return getDynamicObjectPropertyType(property) ?? property.typeName;
+  }
+  return property.typeName;
+}
+
+function getDynamicObjectPropertyType(
+  property: ScriptProperty,
+): string | undefined {
+  const members = property.unionTypeNames ?? [property.typeName];
+  if (
+    !members.every(
+      (typeName) => isObjectLiteralType(typeName) || isNullishType(typeName),
+    )
+  ) {
+    return;
+  }
+  const dynamicMembers = members.map((typeName) =>
+    isObjectLiteralType(typeName)
+      ? `${typeName} & Record<string, any>`
+      : typeName,
+  );
+  if (!members.some(isObjectLiteralType)) {
+    dynamicMembers.push('Record<string, any>');
+  }
+  return dynamicMembers.join(' | ');
+}
+
+function isObjectLiteralType(typeName: string): boolean {
+  const trimmed = typeName.trim();
+  return (
+    trimmed.startsWith('{') &&
+    scanBalanced(trimmed, 0, '{', '}') === trimmed.length
+  );
+}
+
+function isNullishType(typeName: string): boolean {
+  return typeName === 'null' || typeName === 'undefined';
 }
 
 export function getComponentTypeNames(index: number): {

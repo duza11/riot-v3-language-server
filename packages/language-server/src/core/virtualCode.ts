@@ -15,6 +15,7 @@ import {
   getRiotV3FileTypeScope,
   type RiotV3GlobalTypesComponentData,
 } from './globalTypes';
+import type { RiotV3LanguageOptions } from './options';
 import {
   generateScriptVirtualText,
   getComponentScriptLanguageId,
@@ -35,6 +36,7 @@ export class RiotV3VirtualCode implements VirtualCode {
   constructor(
     public snapshot: ts.IScriptSnapshot,
     fileName?: string,
+    options: RiotV3LanguageOptions = {},
   ) {
     this.mappings = [
       {
@@ -76,6 +78,7 @@ export class RiotV3VirtualCode implements VirtualCode {
           jsDocTypedefs: script.jsDocTypedefs,
         })),
         fileTypeScope,
+        options,
       ),
     ];
   }
@@ -84,8 +87,13 @@ export class RiotV3VirtualCode implements VirtualCode {
 function createRiotV3GlobalTypesVirtualCode(
   components: RiotV3GlobalTypesComponentData[],
   fileTypeScope?: string,
+  options: RiotV3LanguageOptions = {},
 ): VirtualCode {
-  const generated = generateRiotV3GlobalTypes(components, fileTypeScope);
+  const generated = generateRiotV3GlobalTypes(
+    components,
+    fileTypeScope,
+    options,
+  );
   let generatedText = generated.text;
   const sourceOffsets: number[] = [];
   const generatedOffsets: number[] = [];

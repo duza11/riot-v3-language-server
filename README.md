@@ -17,6 +17,18 @@ This repository contains a Volar-based language server for Riot.js v3 `.tag` fil
 - Embedded HTML, CSS, Emmet, JavaScript, and TypeScript language services
 - Rename, references, document highlights, diagnostics, completion, and hover for supported patterns
 
+## Configuration
+
+Inferred object properties are strict by default. VS Code users can enable dynamic child properties for component properties that receive an inferred `any` value. Known object shapes and `null` or `undefined` initializers are preserved:
+
+```json
+{
+  "riotV3.allowDynamicPropertiesFromAnyAssignments": true
+}
+```
+
+Standalone LSP clients can use `initializationOptions.riotV3.allowDynamicPropertiesFromAnyAssignments`. See the package READMEs for configuration details and embedded language settings.
+
 ## Development
 
 This project uses pnpm workspaces. The recommended development environment is the Nix flake in this repository.
