@@ -339,7 +339,9 @@ describe('global type virtual code', () => {
 
     const globals = getGlobalTypesText(code);
 
-    expect(globals).toContain('edit: (...args: any[]) => any;');
+    expect(globals).toContain(
+      'edit: (event: RiotV3Event<RiotV3NativeEvent<"click">, undefined>) => any;',
+    );
   });
 
   it('infers state from multiple script blocks in one component scope', () => {

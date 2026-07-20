@@ -6,6 +6,7 @@ import { findTemplateExpressionEnd } from './attributes';
 import { parseClassShorthandExpressions } from './classShorthand';
 import {
   createEachCollectionExpression,
+  getContainingEachScopes,
   getEachDepthForOffset,
   getEachScopes,
   getLocalDefinitionsForOffset,
@@ -21,15 +22,64 @@ export function createTemplateAnalysis(
 ): TemplateAnalysis {
   const sourceText = snapshot.getText(0, snapshot.getLength());
   const eachScopes = getEachScopes(sourceText, htmlNodes);
-  return {
-    expressions: getTemplateExpressionsForSource(
-      sourceText,
-      eachScopes,
-      ignoredRanges,
-      range,
-    ),
+  const expressions = getTemplateExpressionsForSource(
+    sourceText,
     eachScopes,
+    ignoredRanges,
+    range,
+  );
+  return {
+    expressions,
+    eachScopes,
+    eventBindings: getTemplateEventBindings(expressions, eachScopes),
   };
+}
+
+function getTemplateEventBindings(
+  expressions: TemplateExpression[],
+  eachScopes: EachScope[],
+): TemplateAnalysis['eventBindings'] {
+  return expressions.flatMap((expression) => {
+    const eventName = expression.attributeName?.match(/^on(.+)$/)?.[1];
+    if (!eventName) {
+      return [];
+    }
+    const scopes = getContainingEachScopes(expression.sourceOffset, eachScopes);
+    const handler = getDirectEventHandlerName(expression, scopes.length);
+    if (!handler) {
+      return [];
+    }
+    return [
+      {
+        handlerName: handler.name,
+        eventName,
+        sourceOffset:
+          expression.sourceOffset + expression.text.lastIndexOf(handler.name),
+        eachScopes: scopes,
+      },
+    ];
+  });
+}
+
+function getDirectEventHandlerName(
+  expression: TemplateExpression,
+  eachDepth: number,
+): { name: string } | undefined {
+  const text = expression.text.trim();
+  const direct = text.match(/^(?:this\.)?([A-Za-z_$][\w$]*)$/);
+  if (direct) {
+    if (
+      !text.startsWith('this.') &&
+      expression.localDefinitions.some((local) => local.name === direct[1])
+    ) {
+      return;
+    }
+    return { name: direct[1] };
+  }
+  const parent = text.match(/^((?:parent\.)+)([A-Za-z_$][\w$]*)$/);
+  if (parent && parent[1].match(/parent\./g)?.length === eachDepth) {
+    return { name: parent[2] };
+  }
 }
 
 function getTemplateExpressionsForSource(
@@ -93,6 +143,7 @@ function getTemplateExpressionsForSource(
               classExpression.sourceOffset,
               eachScopes,
             ),
+            attributeName,
           });
         }
         offset = end;
@@ -106,6 +157,7 @@ function getTemplateExpressionsForSource(
       localNames: getLocalNamesForOffset(textStart, eachScopes),
       localDefinitions: getLocalDefinitionsForOffset(textStart, eachScopes),
       eachDepth: getEachDepthForOffset(textStart, eachScopes),
+      attributeName,
     });
     offset = end;
   }

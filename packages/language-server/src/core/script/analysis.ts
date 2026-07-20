@@ -209,6 +209,13 @@ export function scanRiotV3MethodProperties(
       typeName: jsDocType ?? '(...args: any[]) => any',
       assignmentKind: 'replacement',
       typeOrigin: jsDocType ? 'explicit' : 'inferred',
+      hasExplicitFirstParameterType: jsDocType
+        ? parseJSDocFunctionTypes(
+            findPrecedingJSDoc(text, method.nameStart) ?? '',
+          ).params.has(
+            parseRiotMethodParameters(text, method.nameEnd)?.[0] ?? '',
+          )
+        : undefined,
     });
   }
   return properties;
@@ -377,6 +384,7 @@ function scanOwnerPropertyAssignment(
         : 'any',
     typeOrigin: assignedType?.typeOrigin ?? 'inferred',
     isAssignment: assignedType !== undefined,
+    hasExplicitFirstParameterType: assignedType?.hasExplicitFirstParameterType,
   };
 }
 

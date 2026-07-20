@@ -6,7 +6,7 @@ import {
 } from '../helpers/virtualCode';
 
 describe('script virtual code', () => {
-  it('keeps this-alias function assignments intact', () => {
+  it('normalizes this-alias function assignment owners', () => {
     const code = createVirtualCode(`
   <demo-widget>
     <script>
@@ -20,7 +20,7 @@ describe('script virtual code', () => {
 
     const script = getScriptText(code);
 
-    expect(script).toContain('self.sum = function (a, b) {');
+    expect(script).toContain('this.sum = function (a, b) {');
     expect(script).not.toContain('this.unction');
   });
 

@@ -8,6 +8,14 @@ export interface TemplateExpression {
   localDefinitions: EachLocalName[];
   eachDepth: number | undefined;
   excludedEachScopeSourceOffset?: number;
+  attributeName?: string;
+}
+
+export interface TemplateEventBinding {
+  handlerName: string;
+  eventName: string;
+  sourceOffset: number;
+  eachScopes: EachScope[];
 }
 
 export interface EachScope {
@@ -36,4 +44,5 @@ export interface EachLocalName {
 export interface TemplateAnalysis {
   expressions: TemplateExpression[];
   eachScopes: EachScope[];
+  eventBindings: TemplateEventBinding[];
 }

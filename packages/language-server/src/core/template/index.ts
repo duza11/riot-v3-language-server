@@ -5,6 +5,7 @@ export type {
   EachLocalName,
   EachScope,
   TemplateAnalysis,
+  TemplateEventBinding,
   TemplateExpression,
 } from './types';
 export { createTemplateVirtualCode } from './virtualCode';
