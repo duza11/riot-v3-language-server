@@ -109,6 +109,57 @@ describe('Riot event handler types', () => {
     expect(type).toBe('string');
   });
 
+  it('resolves a parent-qualified root handler from a nested each context', () => {
+    // Arrange
+    const code = createVirtualCode(`
+      <root>
+        <div each={ list }>
+          <div each={ message, i in parent.list }>
+            <button onclick={ parent.handleClick } />
+          </div>
+        </div>
+        <script>
+          this.list = ['Hi!']
+          handleClick(e) {
+            console.log(e.item.i)
+          }
+        </script>
+      </root>
+    `);
+
+    // Act
+    const type = getScriptIdentifierType(code, 'i)', 'i');
+
+    // Assert
+    expect(type).toBe('number');
+  });
+
+  it('does not resolve a parent-qualified each local as a root handler', () => {
+    // Arrange
+    const code = createVirtualCode(`
+      <root>
+        <div each={ handleClick in handlers }>
+          <div each={ message, i in parent.list }>
+            <button onclick={ parent.handleClick } />
+          </div>
+        </div>
+        <script>
+          this.handlers = [() => undefined]
+          this.list = ['Hi!']
+          handleClick(e) {
+            console.log(e.item.i)
+          }
+        </script>
+      </root>
+    `);
+
+    // Act
+    const type = getScriptIdentifierType(code, 'i)', 'i');
+
+    // Assert
+    expect(type).toBe('any');
+  });
+
   it('types an explicit each index on a direct event handler', () => {
     // Arrange
     const code = createVirtualCode(`

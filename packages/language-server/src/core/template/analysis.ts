@@ -45,7 +45,7 @@ function getTemplateEventBindings(
       return [];
     }
     const scopes = getContainingEachScopes(expression.sourceOffset, eachScopes);
-    const handler = getDirectEventHandlerName(expression, scopes.length);
+    const handler = getDirectEventHandlerName(expression, scopes);
     if (!handler) {
       return [];
     }
@@ -63,23 +63,35 @@ function getTemplateEventBindings(
 
 function getDirectEventHandlerName(
   expression: TemplateExpression,
-  eachDepth: number,
+  eachScopes: EachScope[],
 ): { name: string } | undefined {
   const text = expression.text.trim();
   const direct = text.match(/^(?:this\.)?([A-Za-z_$][\w$]*)$/);
   if (direct) {
-    if (
-      !text.startsWith('this.') &&
-      expression.localDefinitions.some((local) => local.name === direct[1])
-    ) {
+    if (hasEachLocal(eachScopes, direct[1])) {
       return;
     }
     return { name: direct[1] };
   }
   const parent = text.match(/^((?:parent\.)+)([A-Za-z_$][\w$]*)$/);
-  if (parent && parent[1].match(/parent\./g)?.length === eachDepth) {
-    return { name: parent[2] };
+  if (!parent) {
+    return;
   }
+  const parentDepth = parent[1].match(/parent\./g)?.length ?? 0;
+  if (parentDepth > eachScopes.length) {
+    return;
+  }
+  const targetScopes = eachScopes.slice(0, eachScopes.length - parentDepth);
+  if (hasEachLocal(targetScopes, parent[2])) {
+    return;
+  }
+  return { name: parent[2] };
+}
+
+function hasEachLocal(eachScopes: EachScope[], name: string): boolean {
+  return eachScopes.some((scope) =>
+    scope.localNames.some((local) => local.name === name),
+  );
 }
 
 function getTemplateExpressionsForSource(
