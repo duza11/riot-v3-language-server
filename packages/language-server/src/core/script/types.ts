@@ -6,11 +6,13 @@ export interface ScriptPropertyAssignment {
   typeName: string;
   typeOrigin: ScriptProperty['typeOrigin'];
   isAssignment: boolean;
+  hasExplicitFirstParameterType?: boolean;
 }
 
 export interface AssignedPropertyType {
   typeName: string;
   typeOrigin: ScriptProperty['typeOrigin'];
+  hasExplicitFirstParameterType?: boolean;
 }
 
 export interface ScriptJSDocTypedBinding {
@@ -18,4 +20,11 @@ export interface ScriptJSDocTypedBinding {
   typeName: string;
   scopeStart: number;
   scopeEnd: number;
+}
+
+export interface ScriptEventHandlerScope {
+  handlerName: string;
+  parameterName: string;
+  bodyStart: number;
+  bodyEnd: number;
 }

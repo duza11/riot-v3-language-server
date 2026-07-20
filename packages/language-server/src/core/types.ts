@@ -38,6 +38,7 @@ export interface ScriptProperty {
   typeOrigin: 'inferred' | 'explicit';
   hasInferredAnyAssignment?: boolean;
   unionTypeNames?: string[];
+  hasExplicitFirstParameterType?: boolean;
 }
 
 export interface JSDocTypedef {

@@ -1,5 +1,6 @@
 import type { RiotV3LanguageOptions } from './options';
 import { scanBalanced } from './scanners';
+import type { EachScope, TemplateEventBinding } from './template';
 import type { GeneratedSegment, JSDocTypedef, ScriptProperty } from './types';
 
 const riotV3GlobalTypes = `
@@ -15,6 +16,17 @@ type RiotV3EachIndex<T> =
 	T extends readonly unknown[] | string ? number :
 	T extends object ? Extract<keyof T, string> :
 	any;
+type RiotV3PathValue<T, Path extends readonly PropertyKey[]> =
+	Path extends readonly [infer Head extends PropertyKey, ...infer Tail extends PropertyKey[]] ?
+		Head extends keyof T ? RiotV3PathValue<T[Head], Tail> : any :
+	T;
+type RiotV3Event<NativeEvent extends Event, Item> = NativeEvent & {
+	item: Item;
+	which?: number;
+	preventUpdate?: boolean;
+};
+type RiotV3NativeEvent<Name extends string> =
+	Name extends keyof GlobalEventHandlersEventMap ? GlobalEventHandlersEventMap[Name] : Event;
 type RiotV3EachObject<T> =
 	T extends object ? Omit<T, 'opts' | 'parent'> : {};
 type RiotV3EachData<Current, Parent> =
@@ -85,6 +97,7 @@ declare const opts: RiotV3TagInstance['opts'];
 export interface RiotV3GlobalTypesComponentData {
   scriptProperties: ScriptProperty[];
   jsDocTypedefs: JSDocTypedef[];
+  eventBindings: TemplateEventBinding[];
 }
 
 export interface GeneratedRiotV3GlobalTypes {
@@ -103,7 +116,8 @@ export function generateRiotV3GlobalTypes(
     },
   ];
   for (let index = 0; index < components.length; index++) {
-    const { scriptProperties, jsDocTypedefs } = components[index];
+    const { scriptProperties, jsDocTypedefs, eventBindings } =
+      components[index];
     const jsDocTypedefNames = new Map(
       jsDocTypedefs.map((typedef) => [
         typedef.name,
@@ -129,7 +143,12 @@ export function generateRiotV3GlobalTypes(
         text:
           ': ' +
           resolveJSDocTypedefReferences(
-            getGeneratedPropertyTypeName(property, options),
+            getGeneratedPropertyTypeName(
+              property,
+              options,
+              index,
+              eventBindings,
+            ),
             jsDocTypedefNames,
           ) +
           ';\n',
@@ -159,7 +178,17 @@ export function generateRiotV3GlobalTypes(
 function getGeneratedPropertyTypeName(
   property: ScriptProperty,
   options: RiotV3LanguageOptions,
+  componentIndex: number,
+  eventBindings: TemplateEventBinding[],
 ): string {
+  const eventType = getEventHandlerPropertyType(
+    property,
+    componentIndex,
+    eventBindings,
+  );
+  if (eventType) {
+    return eventType;
+  }
   if (
     options.allowDynamicPropertiesFromAnyAssignments &&
     property.typeOrigin === 'inferred' &&
@@ -168,6 +197,130 @@ function getGeneratedPropertyTypeName(
     return getDynamicObjectPropertyType(property) ?? property.typeName;
   }
   return property.typeName;
+}
+
+function getEventHandlerPropertyType(
+  property: ScriptProperty,
+  componentIndex: number,
+  eventBindings: TemplateEventBinding[],
+): string | undefined {
+  if (
+    property.typeOrigin === 'explicit' &&
+    property.hasExplicitFirstParameterType !== false
+  ) {
+    return;
+  }
+  const bindings = eventBindings.filter(
+    (binding) => binding.handlerName === property.name,
+  );
+  if (!bindings.length) {
+    return;
+  }
+  const eventTypes = bindings.map((binding) => {
+    const nativeEvent = `RiotV3NativeEvent<${JSON.stringify(binding.eventName)}>`;
+    const itemType = getEventItemType(binding.eachScopes, componentIndex);
+    return `RiotV3Event<${nativeEvent}, ${itemType}>`;
+  });
+  const uniqueEventTypes = [...new Set(eventTypes)];
+  return replaceFirstFunctionParameterType(
+    property.typeName,
+    uniqueEventTypes.join(' | '),
+  );
+}
+
+function replaceFirstFunctionParameterType(
+  functionType: string,
+  eventType: string,
+): string {
+  const trimmed = functionType.trim();
+  if (trimmed[0] !== '(') {
+    return `(event: ${eventType}) => any`;
+  }
+  const parametersEnd = scanBalanced(trimmed, 0, '(', ')');
+  if (
+    parametersEnd === undefined ||
+    !trimmed.slice(parametersEnd).trimStart().startsWith('=>')
+  ) {
+    return `(event: ${eventType}) => any`;
+  }
+  const parameters = trimmed.slice(1, parametersEnd - 1);
+  const firstComma = findTopLevelParameterComma(parameters);
+  const firstParameter = parameters.slice(0, firstComma ?? parameters.length);
+  const parameterName =
+    firstParameter.includes(':') &&
+    !firstParameter.trimStart().startsWith('...')
+      ? (firstParameter.match(/[A-Za-z_$][\w$]*/)?.[0] ?? 'event')
+      : 'event';
+  const remainingParameters =
+    firstComma === undefined ? '' : parameters.slice(firstComma);
+  return `(${parameterName}: ${eventType}${remainingParameters}) ${trimmed.slice(parametersEnd).trimStart()}`;
+}
+
+function findTopLevelParameterComma(parameters: string): number | undefined {
+  for (let offset = 0; offset < parameters.length; offset++) {
+    const char = parameters[offset];
+    if (char === '(') {
+      offset = (scanBalanced(parameters, offset, '(', ')') ?? offset + 1) - 1;
+    } else if (char === '{') {
+      offset = (scanBalanced(parameters, offset, '{', '}') ?? offset + 1) - 1;
+    } else if (char === '[') {
+      offset = (scanBalanced(parameters, offset, '[', ']') ?? offset + 1) - 1;
+    } else if (char === ',') {
+      return offset;
+    }
+  }
+}
+
+function getEventItemType(scopes: EachScope[], componentIndex: number): string {
+  if (!scopes.length) {
+    return 'undefined';
+  }
+  let parentDataType = getComponentStateTypeName(componentIndex);
+  let parentContextType = parentDataType;
+  let currentItemType = 'any';
+  for (const scope of scopes) {
+    const collectionType = getEventCollectionType(
+      scope.collectionText,
+      parentContextType,
+    );
+    currentItemType = getEventEachItemType(scope, collectionType);
+    parentDataType = `RiotV3EachData<${currentItemType}, ${parentDataType}>`;
+    parentContextType = `${parentDataType} & { parent: ${parentContextType} }`;
+  }
+  return currentItemType;
+}
+
+function getEventEachItemType(
+  scope: EachScope,
+  collectionType: string,
+): string {
+  if (scope.kind === 'shorthand') {
+    return `RiotV3EachItem<${collectionType}>`;
+  }
+  const members = scope.localNames.map((localName) => {
+    const helper =
+      localName.kind === 'item' ? 'RiotV3EachItem' : 'RiotV3EachIndex';
+    return `${localName.name}: ${helper}<${collectionType}>;`;
+  });
+  return `{ ${members.join(' ')} }`;
+}
+
+function getEventCollectionType(
+  expression: string,
+  contextType: string,
+): string {
+  const path = parseEventCollectionPath(expression);
+  return path
+    ? `RiotV3PathValue<${contextType}, [${path.map((part) => JSON.stringify(part)).join(', ')}]>`
+    : 'any';
+}
+
+function parseEventCollectionPath(expression: string): string[] | undefined {
+  const trimmed = expression.trim().replace(/^this\./, '');
+  if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(trimmed)) {
+    return;
+  }
+  return trimmed.split('.');
 }
 
 function getDynamicObjectPropertyType(

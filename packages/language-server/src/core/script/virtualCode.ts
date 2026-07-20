@@ -18,6 +18,7 @@ const riotV3ImportStatement =
 export function generateScriptVirtualText(
   blocks: { text: string; sourceOffset: number }[],
   prefix: string,
+  thisAliases: string[] = [],
 ): { text: string; mappings: CodeMapping[] } {
   const importSegments: GeneratedSegment[] = [];
   const bodySegments: GeneratedSegment[] = [{ text: prefix }];
@@ -45,6 +46,7 @@ export function generateScriptVirtualText(
         ...generateScriptSegments(
           blocks[index].text.slice(range.start, range.end),
           blocks[index].sourceOffset + range.start,
+          thisAliases,
         ),
       );
     }
@@ -152,6 +154,7 @@ function getJavaScriptNonCodeRanges(text: string): TextRange[] {
 function generateScriptSegments(
   text: string,
   sourceOffset: number,
+  thisAliases: string[] = [],
 ): GeneratedSegment[] {
   const segments: GeneratedSegment[] = [];
   let offset = 0;
@@ -165,6 +168,29 @@ function generateScriptSegments(
     const skipped = scanJavaScriptNonCode(text, offset);
     if (skipped !== undefined) {
       offset = skipped;
+      continue;
+    }
+    const aliasFunctionAssignment = scanAliasFunctionAssignment(
+      text,
+      offset,
+      thisAliases,
+    );
+    if (aliasFunctionAssignment) {
+      pushMappedScriptSegment(
+        segments,
+        text,
+        lastMappedOffset,
+        offset,
+        sourceOffset,
+      );
+      segments.push({
+        text: 'this',
+        sourceOffset: sourceOffset + offset,
+        length: aliasFunctionAssignment.aliasLength,
+        generatedLength: 'this'.length,
+      });
+      offset += aliasFunctionAssignment.aliasLength;
+      lastMappedOffset = offset;
       continue;
     }
     if (
@@ -235,6 +261,30 @@ function generateScriptSegments(
     sourceOffset,
   );
   return segments;
+}
+
+function scanAliasFunctionAssignment(
+  text: string,
+  start: number,
+  aliases: string[],
+): { aliasLength: number } | undefined {
+  for (const alias of aliases) {
+    if (
+      !text.startsWith(alias, start) ||
+      /[\w$]/.test(text[start - 1] ?? '') ||
+      /[\w$]/.test(text[start + alias.length] ?? '')
+    ) {
+      continue;
+    }
+    const tail = text.slice(start + alias.length);
+    if (
+      /^\s*\.\s*[A-Za-z_$][\w$]*\s*=\s*(?:function\b|(?:async\s+)?(?:[A-Za-z_$][\w$]*|\([^)]*\))\s*=>)/.test(
+        tail,
+      )
+    ) {
+      return { aliasLength: alias.length };
+    }
+  }
 }
 
 function pushMappedScriptSegment(

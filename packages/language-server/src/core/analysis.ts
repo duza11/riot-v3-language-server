@@ -1,8 +1,12 @@
 import type * as ts from 'typescript';
 import * as html from 'vscode-html-languageservice';
 import { getRiotV3Components, getTemplateIgnoredRanges } from './components';
-import type { ScriptJSDocTypedBinding } from './script';
+import type {
+  ScriptEventHandlerScope,
+  ScriptJSDocTypedBinding,
+} from './script';
 import {
+  getScriptEventHandlerScopes,
   getScriptJSDocTypedBindings,
   getScriptJSDocTypedefs,
   getScriptProperties,
@@ -18,6 +22,7 @@ export interface RiotV3ScriptAnalysis {
   aliases: string[];
   jsDocTypedefs: JSDocTypedef[];
   jsDocTypedBindings: ScriptJSDocTypedBinding[];
+  eventHandlerScopes: ScriptEventHandlerScope[];
 }
 
 export interface RiotV3ComponentAnalysis {
@@ -43,27 +48,35 @@ export function analyzeRiotV3Document(
     html.TextDocument.create('', 'html', 0, sourceText),
   );
   const components = getRiotV3Components(sourceText, htmlDocument).map(
-    (component): RiotV3ComponentAnalysis => ({
-      component,
-      script: {
-        properties: getScriptProperties(snapshot, component.scripts),
-        aliases: getScriptThisAliases(snapshot, component.scripts),
-        jsDocTypedefs: getScriptJSDocTypedefs(snapshot, component.scripts),
-        jsDocTypedBindings: getScriptJSDocTypedBindings(
-          snapshot,
-          component.scripts,
-        ),
-      },
-      template: createTemplateAnalysis(
-        snapshot,
-        component.nodes,
-        getTemplateIgnoredRanges(component),
-        {
-          start: component.start,
-          end: component.end,
+    (component): RiotV3ComponentAnalysis => {
+      const aliases = getScriptThisAliases(snapshot, component.scripts);
+      return {
+        component,
+        script: {
+          properties: getScriptProperties(snapshot, component.scripts),
+          aliases,
+          jsDocTypedefs: getScriptJSDocTypedefs(snapshot, component.scripts),
+          jsDocTypedBindings: getScriptJSDocTypedBindings(
+            snapshot,
+            component.scripts,
+          ),
+          eventHandlerScopes: getScriptEventHandlerScopes(
+            snapshot,
+            component.scripts,
+            aliases,
+          ),
         },
-      ),
-    }),
+        template: createTemplateAnalysis(
+          snapshot,
+          component.nodes,
+          getTemplateIgnoredRanges(component),
+          {
+            start: component.start,
+            end: component.end,
+          },
+        ),
+      };
+    },
   );
   return {
     snapshot,

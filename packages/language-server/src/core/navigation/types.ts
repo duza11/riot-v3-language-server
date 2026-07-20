@@ -12,11 +12,13 @@ export interface NavigationOccurrence {
   start: number;
   end: number;
   role: NavigationOccurrenceRole;
+  renameable?: boolean;
 }
 
 export interface NestedPropertyOccurrence extends NavigationOccurrence {
   path: string[];
   symbolKey?: string;
+  candidateKeys?: string[];
 }
 
 export interface IdentifierRange {

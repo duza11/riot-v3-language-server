@@ -6,7 +6,11 @@ import {
   scanJavaScriptNonCode,
 } from '../scanners';
 import type { ScriptProperty } from '../types';
-import { inferJSDocFunctionType, parseJSDocType } from './jsdoc';
+import {
+  hasExplicitFirstFunctionParameterType,
+  inferJSDocFunctionType,
+  parseJSDocType,
+} from './jsdoc';
 import type { AssignedPropertyType, ScriptPropertyAssignment } from './types';
 
 export function inferAssignedPropertyTypeIfAssigned(
@@ -39,7 +43,15 @@ export function inferAssignedPropertyTypeIfAssigned(
     ? inferJSDocFunctionType(text, cursor, jsDoc)
     : undefined;
   if (jsDocFunctionType) {
-    return { typeName: jsDocFunctionType, typeOrigin: 'explicit' };
+    return {
+      typeName: jsDocFunctionType,
+      typeOrigin: 'explicit',
+      hasExplicitFirstParameterType: hasExplicitFirstFunctionParameterType(
+        text,
+        cursor,
+        jsDoc ?? '',
+      ),
+    };
   }
   return {
     typeName: inferExpressionType(text, cursor),
@@ -64,6 +76,7 @@ export function createScriptPropertyFromAssignment(
       assignment.isAssignment &&
       assignment.typeOrigin === 'inferred' &&
       assignment.typeName === 'any',
+    hasExplicitFirstParameterType: assignment.hasExplicitFirstParameterType,
   };
 }
 

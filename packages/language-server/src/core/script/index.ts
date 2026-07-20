@@ -6,10 +6,14 @@ export {
   scanInstancePropertyOccurrences,
   scanRiotV3MethodProperties,
 } from './analysis';
+export { getScriptEventHandlerScopes } from './eventHandlers';
 export {
   findPrecedingJSDoc,
   getScriptJSDocTypedefs,
   parseJSDocType,
 } from './jsdoc';
-export type { ScriptJSDocTypedBinding } from './types';
+export type {
+  ScriptEventHandlerScope,
+  ScriptJSDocTypedBinding,
+} from './types';
 export { generateScriptVirtualText } from './virtualCode';

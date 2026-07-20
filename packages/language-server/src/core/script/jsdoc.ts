@@ -78,6 +78,18 @@ export function inferJSDocFunctionType(
   return `(${typedParameters.join(', ')}) => ${jsDocTypes.returnType ?? 'any'}`;
 }
 
+export function hasExplicitFirstFunctionParameterType(
+  text: string,
+  start: number,
+  jsDoc: string,
+): boolean | undefined {
+  const parameters = parseFunctionExpressionParameters(text, start);
+  if (!parameters?.length) {
+    return;
+  }
+  return parseJSDocFunctionTypes(jsDoc).params.has(parameters[0]);
+}
+
 export function inferJSDocRiotMethodType(
   text: string,
   nameEnd: number,
@@ -141,6 +153,16 @@ function parseFunctionExpressionParameters(
   text: string,
   start: number,
 ): string[] | undefined {
+  return (
+    parseTraditionalFunctionParameters(text, start) ??
+    parseArrowFunctionParameters(text, start)
+  );
+}
+
+function parseTraditionalFunctionParameters(
+  text: string,
+  start: number,
+): string[] | undefined {
   if (
     !text.startsWith('function', start) ||
     isIdentifierPart(text[start - 1] ?? '') ||
@@ -174,6 +196,45 @@ function parseFunctionExpressionParameters(
   return splitTopLevelCommaSeparated(text.slice(cursor + 1, paramsEnd - 1))
     .map(getFunctionParameterName)
     .filter((name): name is string => name !== undefined);
+}
+
+function parseArrowFunctionParameters(
+  text: string,
+  start: number,
+): string[] | undefined {
+  let cursor = start;
+  if (
+    text.startsWith('async', cursor) &&
+    !isIdentifierPart(text[cursor + 'async'.length] ?? '')
+  ) {
+    cursor += 'async'.length;
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+      cursor++;
+    }
+  }
+  let parameters: string[];
+  if (text[cursor] === '(') {
+    const parametersEnd = scanBalanced(text, cursor, '(', ')');
+    if (parametersEnd === undefined) {
+      return;
+    }
+    parameters = splitTopLevelCommaSeparated(
+      text.slice(cursor + 1, parametersEnd - 1),
+    )
+      .map(getFunctionParameterName)
+      .filter((name): name is string => name !== undefined);
+    cursor = parametersEnd;
+  } else if (isIdentifierStart(text[cursor])) {
+    const parameterEnd = scanIdentifierEnd(text, cursor);
+    parameters = [text.slice(cursor, parameterEnd)];
+    cursor = parameterEnd;
+  } else {
+    return;
+  }
+  while (cursor < text.length && /\s/.test(text[cursor])) {
+    cursor++;
+  }
+  return text.startsWith('=>', cursor) ? parameters : undefined;
 }
 
 function getFunctionParameterName(text: string): string | undefined {

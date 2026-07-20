@@ -13,6 +13,7 @@ import {
   type TemplateExpression,
 } from '../template';
 import type { ScriptBlock, ScriptProperty } from '../types';
+import { getEachLocalOccurrences } from './eachLocals';
 import type { NestedPropertyOccurrence } from './types';
 
 interface ResolvedPath {
@@ -72,6 +73,12 @@ export function getNestedPropertyOccurrences(
         templateAnalysis.eachScopes,
       ),
   );
+  const eventItemOccurrences = getEventItemOccurrences(
+    snapshot,
+    componentAnalysis,
+    rootNames,
+    typedefNavigation.symbols,
+  );
 
   return [
     ...typedefNavigation.declarations,
@@ -83,7 +90,257 @@ export function getNestedPropertyOccurrences(
       (occurrence) => occurrence.role !== 'declaration',
     ),
     ...templateOccurrences,
+    ...eventItemOccurrences,
   ];
+}
+
+const eventEachLocalSymbolPrefix = 'event-each-local:';
+
+export function getEventEachLocalOccurrences(
+  snapshot: ts.IScriptSnapshot,
+  componentAnalysis: RiotV3ComponentAnalysis,
+  localSourceOffset: number,
+): NestedPropertyOccurrence[] {
+  const rootNames = new Set(
+    componentAnalysis.script.properties.map((property) => property.name),
+  );
+  return getEventItemOccurrences(
+    snapshot,
+    componentAnalysis,
+    rootNames,
+    new Map(),
+  ).filter((occurrence) =>
+    getNestedOccurrenceCandidateKeys(occurrence).includes(
+      `symbol:${eventEachLocalSymbolPrefix}${localSourceOffset}`,
+    ),
+  );
+}
+
+function getEventItemOccurrences(
+  snapshot: ts.IScriptSnapshot,
+  componentAnalysis: RiotV3ComponentAnalysis,
+  rootNames: Set<string>,
+  symbols: Map<string, string>,
+): NestedPropertyOccurrence[] {
+  const occurrences = new Map<string, NestedPropertyOccurrence>();
+  const { script, template } = componentAnalysis;
+  for (const handlerScope of script.eventHandlerScopes) {
+    const bindings = template.eventBindings.filter(
+      (binding) => binding.handlerName === handlerScope.handlerName,
+    );
+    if (!bindings.length) {
+      continue;
+    }
+    const text = snapshot.getText(handlerScope.bodyStart, handlerScope.bodyEnd);
+    const sourceFile = ts.createSourceFile(
+      'event-handler.js',
+      text,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const visit = (node: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(node)) {
+        const eventPath = getEventItemPropertyPath(
+          node,
+          handlerScope.parameterName,
+          sourceFile,
+          handlerScope.bodyStart,
+        );
+        if (eventPath) {
+          for (const binding of bindings) {
+            const occurrence = resolveEventItemOccurrence(
+              eventPath,
+              binding.eachScopes.at(-1),
+              template,
+              rootNames,
+              symbols,
+            );
+            if (occurrence) {
+              addEventEachLocalNavigationOccurrences(
+                occurrence,
+                binding.eachScopes.at(-1),
+                template,
+                occurrences,
+              );
+              occurrences.set(
+                `${occurrence.start}:${occurrence.end}:${occurrence.symbolKey ?? occurrence.path.join('.')}`,
+                occurrence,
+              );
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  return mergeEventItemCandidates([...occurrences.values()]);
+}
+
+function mergeEventItemCandidates(
+  occurrences: NestedPropertyOccurrence[],
+): NestedPropertyOccurrence[] {
+  const grouped = new Map<string, NestedPropertyOccurrence[]>();
+  for (const occurrence of occurrences) {
+    const key = `${occurrence.start}:${occurrence.end}:${occurrence.role}`;
+    const group = grouped.get(key) ?? [];
+    group.push(occurrence);
+    grouped.set(key, group);
+  }
+  return [...grouped.values()]
+    .map((group) => {
+      if (group.length === 1) {
+        return group[0];
+      }
+      const candidateKeys = [
+        ...new Set(group.flatMap(getNestedOccurrenceCandidateKeys)),
+      ];
+      return {
+        ...group[0],
+        candidateKeys,
+        renameable: candidateKeys.length === 1,
+      };
+    })
+    .sort((left, right) => left.start - right.start);
+}
+
+export function getNestedOccurrenceCandidateKeys(
+  occurrence: NestedPropertyOccurrence,
+): string[] {
+  return (
+    occurrence.candidateKeys ?? [
+      occurrence.symbolKey
+        ? `symbol:${occurrence.symbolKey}`
+        : `path:${occurrence.path.join('.')}`,
+    ]
+  );
+}
+
+interface EventItemPropertyPath {
+  names: string[];
+  terminal: { start: number; end: number };
+}
+
+function getEventItemPropertyPath(
+  node: ts.PropertyAccessExpression,
+  parameterName: string,
+  sourceFile: ts.SourceFile,
+  sourceOffset: number,
+): EventItemPropertyPath | undefined {
+  const names: string[] = [];
+  let current: ts.Expression = node;
+  while (ts.isPropertyAccessExpression(current)) {
+    names.unshift(current.name.text);
+    current = current.expression;
+  }
+  if (
+    !ts.isIdentifier(current) ||
+    current.text !== parameterName ||
+    names[0] !== 'item' ||
+    names.length < 2
+  ) {
+    return;
+  }
+  return {
+    names: names.slice(1),
+    terminal: {
+      start: sourceOffset + node.name.getStart(sourceFile),
+      end: sourceOffset + node.name.getEnd(),
+    },
+  };
+}
+
+function resolveEventItemOccurrence(
+  eventPath: EventItemPropertyPath,
+  scope: EachScope | undefined,
+  template: TemplateAnalysis,
+  rootNames: Set<string>,
+  symbols: Map<string, string>,
+): NestedPropertyOccurrence | undefined {
+  if (!scope) {
+    return;
+  }
+  if (scope.kind === 'explicit') {
+    const local = scope.localNames.find(
+      (candidate) => candidate.name === eventPath.names[0],
+    );
+    if (!local) {
+      return;
+    }
+    if (eventPath.names.length === 1) {
+      return {
+        path: [local.name],
+        ...eventPath.terminal,
+        role: 'read',
+        symbolKey: `${eventEachLocalSymbolPrefix}${local.sourceOffset}`,
+      };
+    }
+    if (local.kind !== 'item') {
+      return;
+    }
+    const collectionPath = resolveEachScopeCollectionPath(scope, {
+      eachScopes: template.eachScopes,
+      rootNames,
+    });
+    if (!collectionPath) {
+      return;
+    }
+    const path = [...collectionPath, '[]', ...eventPath.names.slice(1)];
+    return {
+      path,
+      ...eventPath.terminal,
+      role: 'read',
+      symbolKey: symbols.get(path.join('.')),
+    };
+  }
+  const collectionPath = resolveEachScopeCollectionPath(scope, {
+    eachScopes: template.eachScopes,
+    rootNames,
+  });
+  if (!collectionPath) {
+    return;
+  }
+  const path = [...collectionPath, '[]', ...eventPath.names];
+  return {
+    path,
+    ...eventPath.terminal,
+    role: 'read',
+    symbolKey: symbols.get(path.join('.')),
+  };
+}
+
+function addEventEachLocalNavigationOccurrences(
+  occurrence: NestedPropertyOccurrence,
+  scope: EachScope | undefined,
+  template: TemplateAnalysis,
+  occurrences: Map<string, NestedPropertyOccurrence>,
+): void {
+  if (!occurrence.symbolKey?.startsWith(eventEachLocalSymbolPrefix) || !scope) {
+    return;
+  }
+  const local = scope.localNames.find(
+    (candidate) =>
+      occurrence.symbolKey ===
+      `${eventEachLocalSymbolPrefix}${candidate.sourceOffset}`,
+  );
+  if (!local) {
+    return;
+  }
+  for (const localOccurrence of getEachLocalOccurrences(
+    local,
+    template.expressions,
+  )) {
+    const nestedOccurrence = {
+      ...localOccurrence,
+      path: [local.name],
+      symbolKey: occurrence.symbolKey,
+    };
+    occurrences.set(
+      `${nestedOccurrence.start}:${nestedOccurrence.end}:${nestedOccurrence.symbolKey}`,
+      nestedOccurrence,
+    );
+  }
 }
 
 function getInlineTypeDeclarations(
@@ -978,7 +1235,7 @@ function resolveTemplateContextProperty(
 
 function resolveEachScopeCollectionPath(
   scope: EachScope,
-  context: TemplatePathContext,
+  context: Pick<TemplatePathContext, 'eachScopes' | 'rootNames'>,
 ): string[] | undefined {
   const sourceFile = ts.createSourceFile(
     'each-collection.js',
