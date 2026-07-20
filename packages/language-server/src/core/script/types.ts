@@ -21,3 +21,10 @@ export interface ScriptJSDocTypedBinding {
   scopeStart: number;
   scopeEnd: number;
 }
+
+export interface ScriptEventHandlerScope {
+  handlerName: string;
+  parameterName: string;
+  bodyStart: number;
+  bodyEnd: number;
+}

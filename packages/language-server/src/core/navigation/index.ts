@@ -12,7 +12,10 @@ import {
   getEachLocalOccurrences,
   getEachLocalRenameTarget,
 } from './eachLocals';
-import { getNestedPropertyOccurrences } from './nestedProperties';
+import {
+  getEventEachLocalOccurrences,
+  getNestedPropertyOccurrences,
+} from './nestedProperties';
 import {
   getRiotPropertyOccurrences,
   isRiotPropertyRenameSource,
@@ -138,7 +141,14 @@ function getReferenceOccurrences(
     templateAnalysis.eachScopes,
   );
   if (eachLocal) {
-    return getEachLocalOccurrences(eachLocal, templateAnalysis.expressions);
+    return mergeOccurrences(
+      getEachLocalOccurrences(eachLocal, templateAnalysis.expressions),
+      getEventEachLocalOccurrences(
+        snapshot,
+        context.componentAnalysis,
+        eachLocal.sourceOffset,
+      ),
+    );
   }
 
   const nestedOccurrences = getNestedPropertyReferenceOccurrences(context);
@@ -165,6 +175,18 @@ function getReferenceOccurrences(
     templateAnalysis.expressions,
     identifier.name,
     context.componentAnalysis.script,
+  );
+}
+
+function mergeOccurrences(
+  ...groups: NavigationOccurrence[][]
+): NavigationOccurrence[] {
+  const occurrences = new Map<string, NavigationOccurrence>();
+  for (const occurrence of groups.flat()) {
+    occurrences.set(`${occurrence.start}:${occurrence.end}`, occurrence);
+  }
+  return [...occurrences.values()].sort(
+    (left, right) => left.start - right.start,
   );
 }
 
