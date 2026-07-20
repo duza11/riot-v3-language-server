@@ -109,10 +109,10 @@ export function getEventEachLocalOccurrences(
     componentAnalysis,
     rootNames,
     new Map(),
-  ).filter(
-    (occurrence) =>
-      occurrence.symbolKey ===
-      `${eventEachLocalSymbolPrefix}${localSourceOffset}`,
+  ).filter((occurrence) =>
+    getNestedOccurrenceCandidateKeys(occurrence).includes(
+      `symbol:${eventEachLocalSymbolPrefix}${localSourceOffset}`,
+    ),
   );
 }
 
@@ -175,7 +175,46 @@ function getEventItemOccurrences(
     };
     visit(sourceFile);
   }
-  return [...occurrences.values()];
+  return mergeEventItemCandidates([...occurrences.values()]);
+}
+
+function mergeEventItemCandidates(
+  occurrences: NestedPropertyOccurrence[],
+): NestedPropertyOccurrence[] {
+  const grouped = new Map<string, NestedPropertyOccurrence[]>();
+  for (const occurrence of occurrences) {
+    const key = `${occurrence.start}:${occurrence.end}:${occurrence.role}`;
+    const group = grouped.get(key) ?? [];
+    group.push(occurrence);
+    grouped.set(key, group);
+  }
+  return [...grouped.values()]
+    .map((group) => {
+      if (group.length === 1) {
+        return group[0];
+      }
+      const candidateKeys = [
+        ...new Set(group.flatMap(getNestedOccurrenceCandidateKeys)),
+      ];
+      return {
+        ...group[0],
+        candidateKeys,
+        renameable: candidateKeys.length === 1,
+      };
+    })
+    .sort((left, right) => left.start - right.start);
+}
+
+export function getNestedOccurrenceCandidateKeys(
+  occurrence: NestedPropertyOccurrence,
+): string[] {
+  return (
+    occurrence.candidateKeys ?? [
+      occurrence.symbolKey
+        ? `symbol:${occurrence.symbolKey}`
+        : `path:${occurrence.path.join('.')}`,
+    ]
+  );
 }
 
 interface EventItemPropertyPath {

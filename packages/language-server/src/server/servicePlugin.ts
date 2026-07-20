@@ -43,24 +43,26 @@ export function createRiotV3ServicePlugin(): LanguageServicePlugin {
             resolved.virtualCode.analysis,
             resolved.sourceOffset,
           );
-          const definition =
-            occurrences.find(
-              (occurrence) => occurrence.role === 'declaration',
-            ) ?? occurrences[0];
-          if (!definition) {
+          const definitions = occurrences.filter(
+            (occurrence) => occurrence.role === 'declaration',
+          );
+          const targets = definitions.length
+            ? definitions
+            : occurrences.slice(0, 1);
+          if (!targets.length) {
             return;
           }
-          const range = {
-            start: resolved.sourceDocument.positionAt(definition.start),
-            end: resolved.sourceDocument.positionAt(definition.end),
-          };
-          return [
-            {
+          return targets.map((definition) => {
+            const range = {
+              start: resolved.sourceDocument.positionAt(definition.start),
+              end: resolved.sourceDocument.positionAt(definition.end),
+            };
+            return {
               targetUri: resolved.sourceDocument.uri,
               targetRange: range,
               targetSelectionRange: range,
-            },
-          ];
+            };
+          });
         },
         provideDocumentHighlights(document, position) {
           const resolved = getRiotV3DocumentContext(

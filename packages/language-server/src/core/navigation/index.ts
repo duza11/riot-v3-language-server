@@ -14,6 +14,7 @@ import {
 } from './eachLocals';
 import {
   getEventEachLocalOccurrences,
+  getNestedOccurrenceCandidateKeys,
   getNestedPropertyOccurrences,
 } from './nestedProperties';
 import {
@@ -53,13 +54,16 @@ function getRenameEditsForContext(
   context: NavigationContext,
   newName: string,
 ): RiotV3RenameTextEdit[] {
-  return (getReferenceOccurrences(sourceText, context) ?? []).map(
-    ({ start, end }) => ({
+  if (isAmbiguousNestedPropertyTarget(context)) {
+    return [];
+  }
+  return (getReferenceOccurrences(sourceText, context) ?? [])
+    .filter((occurrence) => occurrence.renameable !== false)
+    .map(({ start, end }) => ({
       start,
       end,
       newText: newName,
-    }),
-  );
+    }));
 }
 
 export function getRiotV3ReferenceOccurrences(
@@ -101,7 +105,11 @@ export function getRiotV3RenameRange(
   position: number,
 ): RiotV3RenameRange | undefined {
   const context = getNavigationContext(sourceText, position);
-  if (!context || !getReferenceOccurrences(sourceText, context)?.length) {
+  if (
+    !context ||
+    isAmbiguousNestedPropertyTarget(context) ||
+    !getReferenceOccurrences(sourceText, context)?.length
+  ) {
     return;
   }
   return getRenameRangeForContext(context);
@@ -114,6 +122,7 @@ export function getRiotV3RenameRangeForAnalysis(
   const context = getNavigationContextForAnalysis(analysis, position);
   if (
     !context ||
+    isAmbiguousNestedPropertyTarget(context) ||
     !getReferenceOccurrences(analysis.sourceText, context)?.length
   ) {
     return;
@@ -197,25 +206,34 @@ function getNestedPropertyReferenceOccurrences(
     context.snapshot,
     context.componentAnalysis,
   );
-  const target = occurrences.find(
+  const targets = occurrences.filter(
     (occurrence) =>
       context.identifier.start >= occurrence.start &&
       context.identifier.end <= occurrence.end,
   );
-  if (!target) {
+  if (!targets.length) {
     return;
   }
-  const matching = occurrences.filter(
-    (occurrence) =>
-      occurrence.symbolKey === target.symbolKey &&
-      (target.symbolKey !== undefined ||
-        (occurrence.path.length === target.path.length &&
-          occurrence.path.every(
-            (segment, index) => segment === target.path[index],
-          ))),
+  const targetKeys = new Set(targets.flatMap(getNestedOccurrenceCandidateKeys));
+  const matching = occurrences.filter((occurrence) =>
+    getNestedOccurrenceCandidateKeys(occurrence).some((key) =>
+      targetKeys.has(key),
+    ),
   );
   if (!matching.some((occurrence) => occurrence.role === 'declaration')) {
     return;
   }
   return matching;
+}
+
+function isAmbiguousNestedPropertyTarget(context: NavigationContext): boolean {
+  return getNestedPropertyOccurrences(
+    context.snapshot,
+    context.componentAnalysis,
+  ).some(
+    (occurrence) =>
+      context.identifier.start >= occurrence.start &&
+      context.identifier.end <= occurrence.end &&
+      occurrence.renameable === false,
+  );
 }
