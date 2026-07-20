@@ -18,7 +18,6 @@ const riotV3ImportStatement =
 export function generateScriptVirtualText(
   blocks: { text: string; sourceOffset: number }[],
   prefix: string,
-  instanceTypeName?: string,
   thisAliases: string[] = [],
 ): { text: string; mappings: CodeMapping[] } {
   const importSegments: GeneratedSegment[] = [];
@@ -47,7 +46,6 @@ export function generateScriptVirtualText(
         ...generateScriptSegments(
           blocks[index].text.slice(range.start, range.end),
           blocks[index].sourceOffset + range.start,
-          instanceTypeName,
           thisAliases,
         ),
       );
@@ -156,7 +154,6 @@ function getJavaScriptNonCodeRanges(text: string): TextRange[] {
 function generateScriptSegments(
   text: string,
   sourceOffset: number,
-  instanceTypeName?: string,
   thisAliases: string[] = [],
 ): GeneratedSegment[] {
   const segments: GeneratedSegment[] = [];
@@ -194,24 +191,6 @@ function generateScriptSegments(
       });
       offset += aliasFunctionAssignment.aliasLength;
       lastMappedOffset = offset;
-      continue;
-    }
-    const aliasDeclaration = scanThisAliasDeclaration(
-      text,
-      offset,
-      thisAliases,
-    );
-    if (aliasDeclaration && instanceTypeName) {
-      pushMappedScriptSegment(
-        segments,
-        text,
-        lastMappedOffset,
-        offset,
-        sourceOffset,
-      );
-      segments.push({ text: `/** @type {${instanceTypeName}} */ ` });
-      lastMappedOffset = offset;
-      offset = aliasDeclaration.end;
       continue;
     }
     if (
@@ -306,20 +285,6 @@ function scanAliasFunctionAssignment(
       return { aliasLength: alias.length };
     }
   }
-}
-
-function scanThisAliasDeclaration(
-  text: string,
-  start: number,
-  aliases: string[],
-): { end: number } | undefined {
-  const match = /^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*this\b/.exec(
-    text.slice(start),
-  );
-  if (!match || !aliases.includes(match[1])) {
-    return;
-  }
-  return { end: start + match[0].length };
 }
 
 function pushMappedScriptSegment(

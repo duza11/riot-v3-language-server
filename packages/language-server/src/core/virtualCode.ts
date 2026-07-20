@@ -214,7 +214,6 @@ function* getRiotV3EmbeddedCodes(
       const generated = generateScriptVirtualText(
         scriptBlocks,
         prefix,
-        componentTypeReferences.tagInstance,
         script.aliases,
       );
       yield {
