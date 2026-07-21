@@ -2,9 +2,9 @@ import type { RiotV3LanguageOptions } from './options';
 import { scanBalanced } from './scanners';
 import type { EachScope, TemplateEventBinding } from './template';
 import {
-  formatObjectType,
+  formatObjectTypeShape,
   formatUnionType,
-  parseObjectType,
+  parseObjectTypeShape,
   splitTopLevelUnionTypes,
 } from './typeSyntax';
 import type { GeneratedSegment, JSDocTypedef, ScriptProperty } from './types';
@@ -394,19 +394,19 @@ function applyDynamicObjectPaths(
   const parsedMembers = members.map((member) => ({
     member,
     arrayElementType: parseArrayType(member),
-    properties: parseObjectType(member),
+    objectShape: parseObjectTypeShape(member),
   }));
   const canMakeDynamic =
     isDynamic &&
     parsedMembers.every(
-      ({ member, arrayElementType, properties }) =>
+      ({ member, arrayElementType, objectShape }) =>
         arrayElementType !== undefined ||
-        properties !== undefined ||
+        objectShape !== undefined ||
         isNullishType(member),
     );
   let hasObjectMember = false;
   const transformedMembers = parsedMembers.map(
-    ({ member, arrayElementType, properties }) => {
+    ({ member, arrayElementType, objectShape }) => {
       if (arrayElementType !== undefined) {
         const elementDynamicPaths = getArrayElementPathTrie(dynamicPaths);
         if (
@@ -426,12 +426,12 @@ function applyDynamicObjectPaths(
           ? member
           : `(${transformedElementType})[]`;
       }
-      if (!properties) {
+      if (!objectShape) {
         return member;
       }
       hasObjectMember = true;
-      const objectType = formatObjectType(
-        properties.map((property) => {
+      return formatObjectTypeShape({
+        properties: objectShape.properties.map((property) => {
           const propertyName = normalizeObjectTypePropertyName(property.name);
           return {
             ...property,
@@ -443,10 +443,8 @@ function applyDynamicObjectPaths(
             ),
           };
         }),
-      );
-      return canMakeDynamic
-        ? `${objectType} & Record<string, any>`
-        : objectType;
+        open: objectShape.open || canMakeDynamic,
+      });
     },
   );
   if (

@@ -1142,6 +1142,82 @@ describe('global type virtual code', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  it('preserves dynamic access after adding concrete properties to open objects', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ obj.dynamic }</p>
+  <script>
+    const self = this
+    self.obj = {}
+    self.obj.hoge = 1
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain('obj: { hoge: number; } & Record<string, any>;');
+  });
+
+  it('preserves dynamic access after nested any and concrete assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = { childObj: {} }
+    self.parentObj.childObj = self.opts.obj
+    self.parentObj.childObj.hoge = 1
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'parentObj: { childObj: { hoge: number; } & Record<string, any>; };',
+    );
+  });
+
+  it('allows dynamic properties across open object replacement unions', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ obj.dynamic }</p>
+  <script>
+    const self = this
+    self.obj = {}
+    self.obj = { hoge: 1 }
+    self.obj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
   it('preserves known nested property types after any assignments', () => {
     // Arrange
     const code = createVirtualCode(

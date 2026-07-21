@@ -112,6 +112,26 @@ describe('script type inference', () => {
     expect(type).toBe('string | null');
   });
 
+  it('infers concrete properties added to open objects', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <script>
+      const self = this
+      self.obj = {}
+      self.obj.hoge = 1
+      console.log(self.obj.hoge)
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getScriptIdentifierType(code, 'self.obj.hoge)', 'hoge');
+
+    // Assert
+    expect(type).toBe('number');
+  });
+
   it('preserves an existing nested JSDoc property type', () => {
     // Arrange
     const code = createVirtualCode(`

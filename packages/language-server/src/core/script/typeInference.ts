@@ -7,9 +7,10 @@ import {
 } from '../scanners';
 import {
   formatObjectType,
+  formatObjectTypeShape,
   formatUnionType,
   type ObjectTypeProperty,
-  parseObjectType,
+  parseObjectTypeShape,
   splitTopLevelUnionTypes,
 } from '../typeSyntax';
 import type { ScriptProperty } from '../types';
@@ -200,16 +201,16 @@ function mergePropertyTypes(
   nextExplicitPaths: string[][] | undefined = undefined,
   path: string[] = [],
 ): string | undefined {
-  const currentObject = parseObjectType(currentType);
-  const nextObject = parseObjectType(nextType);
+  const currentObject = parseObjectTypeShape(currentType);
+  const nextObject = parseObjectTypeShape(nextType);
   if (!currentObject || !nextObject) {
     return;
   }
   const properties = new Map<string, ObjectTypeProperty>();
-  for (const property of currentObject) {
+  for (const property of currentObject.properties) {
     properties.set(property.name, property);
   }
-  for (const property of nextObject) {
+  for (const property of nextObject.properties) {
     const existing = properties.get(property.name);
     if (!existing) {
       properties.set(property.name, property);
@@ -228,7 +229,10 @@ function mergePropertyTypes(
     );
     properties.set(property.name, { ...existing, typeName });
   }
-  return formatObjectType([...properties.values()]);
+  return formatObjectTypeShape({
+    properties: [...properties.values()],
+    open: currentObject.open || nextObject.open,
+  });
 }
 
 function mergeNestedPropertyTypes(
