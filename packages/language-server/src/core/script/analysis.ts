@@ -385,6 +385,7 @@ function scanOwnerPropertyAssignment(
     isAssignment: assignedType !== undefined,
     explicitTypePaths: assignedType?.explicitTypePaths,
     hasExplicitFirstParameterType: assignedType?.hasExplicitFirstParameterType,
+    assignedTypeName: assignedType?.typeName,
   };
 }
 

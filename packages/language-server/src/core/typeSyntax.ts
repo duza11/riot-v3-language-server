@@ -5,6 +5,13 @@ export interface ObjectTypeProperty {
   typeName: string;
 }
 
+export interface ObjectTypeShape {
+  properties: ObjectTypeProperty[];
+  open: boolean;
+}
+
+const openObjectType = 'Record<string, any>';
+
 export function parseObjectType(
   typeName: string,
 ): ObjectTypeProperty[] | undefined {
@@ -39,6 +46,65 @@ export function formatObjectType(properties: ObjectTypeProperty[]): string {
   return `{ ${properties
     .map((property) => `${property.name}: ${property.typeName};`)
     .join(' ')} }`;
+}
+
+export function parseObjectTypeShape(
+  typeName: string,
+): ObjectTypeShape | undefined {
+  const trimmed = typeName.trim();
+  if (trimmed === openObjectType) {
+    return { properties: [], open: true };
+  }
+  const properties = parseObjectType(trimmed);
+  if (properties) {
+    return { properties, open: false };
+  }
+  const suffix = ` & ${openObjectType}`;
+  if (trimmed.endsWith(suffix)) {
+    const openProperties = parseObjectType(trimmed.slice(0, -suffix.length));
+    if (openProperties) {
+      return { properties: openProperties, open: true };
+    }
+  }
+  const prefix = `${openObjectType} & `;
+  if (trimmed.startsWith(prefix)) {
+    const openProperties = parseObjectType(trimmed.slice(prefix.length));
+    if (openProperties) {
+      return { properties: openProperties, open: true };
+    }
+  }
+}
+
+export function formatObjectTypeShape(shape: ObjectTypeShape): string {
+  if (shape.open && !shape.properties.length) {
+    return openObjectType;
+  }
+  const typeName = formatObjectType(shape.properties);
+  return shape.open ? `${typeName} & ${openObjectType}` : typeName;
+}
+
+export function parseArrayType(typeName: string): string | undefined {
+  const trimmed = typeName.trim();
+  if (!trimmed.endsWith('[]')) {
+    return;
+  }
+  const elementType = trimmed.slice(0, -2).trim();
+  if (
+    elementType.startsWith('(') &&
+    scanBalanced(elementType, 0, '(', ')') === elementType.length
+  ) {
+    return elementType.slice(1, -1).trim();
+  }
+  return elementType || undefined;
+}
+
+export function formatArrayType(elementType: string): string {
+  const trimmed = elementType.trim();
+  const requiresParentheses =
+    splitTopLevelUnionTypes(trimmed).length > 1 ||
+    trimmed.includes(' & ') ||
+    trimmed.includes('=>');
+  return `${requiresParentheses ? `(${trimmed})` : trimmed}[]`;
 }
 
 export function formatUnionType(typeNames: string[]): string {

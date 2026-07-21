@@ -1142,6 +1142,163 @@ describe('global type virtual code', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  it('preserves dynamic access after adding concrete properties to open objects', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ obj.dynamic }</p>
+  <script>
+    const self = this
+    self.obj = {}
+    self.obj.hoge = 1
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain('obj: { hoge: number; } & Record<string, any>;');
+  });
+
+  it('preserves dynamic access after nested any and concrete assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = { childObj: {} }
+    self.parentObj.childObj = self.opts.obj
+    self.parentObj.childObj.hoge = 1
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'parentObj: { childObj: { hoge: number; } & Record<string, any>; };',
+    );
+  });
+
+  it('allows dynamic properties across open object replacement unions', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ obj.dynamic }</p>
+  <script>
+    const self = this
+    self.obj = {}
+    self.obj = { hoge: 1 }
+    self.obj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('keeps primitive union members strict after object augmentations', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ obj.shared }</p>
+  <script>
+    const self = this
+    self.obj = { known: 'value' }
+    self.obj = 'text'
+    self.obj.shared = true
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('infers element types assigned to initially empty arrays', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.items = []
+    self.items[0] = { hoge: 1 }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('items: { hoge: number; }[];');
+  });
+
+  it('unions direct inferred array element replacements', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.items = [{ known: true }]
+    self.items[0] = { hoge: 1 }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain(
+      'items: ({ known: boolean; } | { hoge: number; })[];',
+    );
+  });
+
+  it('infers element types replaced through computed array indexes', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    const index = 0
+    self.items = []
+    self.items[index] = { hoge: 1 }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('items: { hoge: number; }[];');
+  });
+
   it('preserves known nested property types after any assignments', () => {
     // Arrange
     const code = createVirtualCode(

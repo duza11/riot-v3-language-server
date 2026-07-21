@@ -40,6 +40,8 @@ export interface ScriptProperty {
   explicitTypePaths?: string[][];
   unionTypeNames?: string[];
   hasExplicitFirstParameterType?: boolean;
+  assignmentPath?: string[];
+  assignedTypeName?: string;
 }
 
 export interface JSDocTypedef {

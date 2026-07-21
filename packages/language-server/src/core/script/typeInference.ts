@@ -6,10 +6,13 @@ import {
   scanJavaScriptNonCode,
 } from '../scanners';
 import {
+  formatArrayType,
   formatObjectType,
+  formatObjectTypeShape,
   formatUnionType,
   type ObjectTypeProperty,
-  parseObjectType,
+  parseArrayType,
+  parseObjectTypeShape,
   splitTopLevelUnionTypes,
 } from '../typeSyntax';
 import type { ScriptProperty } from '../types';
@@ -79,6 +82,7 @@ export function createScriptPropertyFromAssignment(
   assignment: ScriptPropertyAssignment,
 ): ScriptProperty {
   const [name, ...path] = assignment.path;
+  const assignedTypeName = assignment.assignedTypeName ?? assignment.typeName;
   return {
     name,
     sourceOffset: assignment.sourceOffset,
@@ -90,7 +94,7 @@ export function createScriptPropertyFromAssignment(
     inferredAnyAssignmentPaths:
       assignment.isAssignment &&
       assignment.typeOrigin === 'inferred' &&
-      assignment.typeName === 'any'
+      assignedTypeName === 'any'
         ? [getInferredAnyAssignmentPath(path)]
         : undefined,
     explicitTypePaths:
@@ -101,6 +105,8 @@ export function createScriptPropertyFromAssignment(
             ...explicitPath,
           ]),
     hasExplicitFirstParameterType: assignment.hasExplicitFirstParameterType,
+    assignmentPath: path.length ? path : undefined,
+    assignedTypeName: path.length ? assignedTypeName : undefined,
   };
 }
 
@@ -145,19 +151,40 @@ export function mergeScriptProperty(
     return { ...existing, inferredAnyAssignmentPaths, explicitTypePaths };
   }
   if (next.assignmentKind === 'augmentation') {
-    const typeName = mergePropertyTypes(
-      existing.typeName,
-      next.typeName,
-      existing.explicitTypePaths,
-      next.explicitTypePaths,
-    );
+    const typeName =
+      next.assignmentPath && next.assignedTypeName
+        ? (mergePropertyAtPath(
+            existing.typeName,
+            next.assignmentPath,
+            next.assignedTypeName,
+            existing.explicitTypePaths,
+            next.explicitTypePaths,
+          ) ??
+          mergePropertyTypes(
+            existing.typeName,
+            next.typeName,
+            existing.explicitTypePaths,
+            next.explicitTypePaths,
+          ))
+        : mergePropertyTypes(
+            existing.typeName,
+            next.typeName,
+            existing.explicitTypePaths,
+            next.explicitTypePaths,
+          );
+    const mergedTypeNames = typeName
+      ? splitTopLevelUnionTypes(typeName)
+      : undefined;
     return typeName !== undefined
       ? {
           ...existing,
           typeName,
           inferredAnyAssignmentPaths,
           explicitTypePaths,
-          unionTypeNames: undefined,
+          unionTypeNames:
+            mergedTypeNames && mergedTypeNames.length > 1
+              ? mergedTypeNames
+              : undefined,
         }
       : { ...existing, inferredAnyAssignmentPaths, explicitTypePaths };
   }
@@ -172,6 +199,173 @@ export function mergeScriptProperty(
     explicitTypePaths,
     unionTypeNames,
   };
+}
+
+function mergePropertyAtPath(
+  currentType: string,
+  remainingPath: string[],
+  assignedType: string,
+  currentExplicitPaths: string[][] | undefined,
+  nextExplicitPaths: string[][] | undefined,
+  path: string[] = [],
+): string | undefined {
+  const members = splitTopLevelUnionTypes(currentType);
+  if (members.length > 1) {
+    let mergedMember = false;
+    const typeNames = members.map((member) => {
+      const merged = mergePropertyMemberAtPath(
+        member,
+        remainingPath,
+        assignedType,
+        currentExplicitPaths,
+        nextExplicitPaths,
+        path,
+      );
+      if (merged !== undefined) {
+        mergedMember = true;
+        return merged;
+      }
+      return member;
+    });
+    return mergedMember ? formatUnionType(typeNames) : undefined;
+  }
+  return mergePropertyMemberAtPath(
+    currentType,
+    remainingPath,
+    assignedType,
+    currentExplicitPaths,
+    nextExplicitPaths,
+    path,
+  );
+}
+
+function mergePropertyMemberAtPath(
+  currentType: string,
+  remainingPath: string[],
+  assignedType: string,
+  currentExplicitPaths: string[][] | undefined,
+  nextExplicitPaths: string[][] | undefined,
+  path: string[],
+): string | undefined {
+  const [part, ...rest] = remainingPath;
+  if (part === undefined) {
+    return mergeNestedPropertyTypes(
+      currentType,
+      assignedType,
+      currentExplicitPaths,
+      nextExplicitPaths,
+      path,
+    );
+  }
+  const propertyPath = [...path, part];
+  const arrayElementType = parseArrayType(currentType);
+  if (arrayElementType !== undefined && isArrayIndex(part)) {
+    const elementType = rest.length
+      ? mergePropertyAtPath(
+          arrayElementType,
+          rest,
+          assignedType,
+          currentExplicitPaths,
+          nextExplicitPaths,
+          propertyPath,
+        )
+      : mergeReplacementTypes(
+          arrayElementType,
+          assignedType,
+          currentExplicitPaths,
+          nextExplicitPaths,
+          propertyPath,
+        );
+    return elementType === undefined ? undefined : formatArrayType(elementType);
+  }
+  if (part === dynamicStringIndexProperty) {
+    return;
+  }
+  const objectShape = parseObjectTypeShape(currentType);
+  if (!objectShape) {
+    return;
+  }
+  const propertyName = getObjectLiteralPropertyPathName(part);
+  const property = objectShape.properties.find(
+    (candidate) =>
+      getObjectLiteralPropertyPathName(candidate.name) === propertyName,
+  );
+  if (!property) {
+    return formatObjectTypeShape({
+      ...objectShape,
+      properties: [
+        ...objectShape.properties,
+        {
+          name: part,
+          typeName: rest.length
+            ? createNestedObjectType(rest, assignedType)
+            : assignedType,
+        },
+      ],
+    });
+  }
+  const typeName = rest.length
+    ? (mergePropertyAtPath(
+        property.typeName,
+        rest,
+        assignedType,
+        currentExplicitPaths,
+        nextExplicitPaths,
+        propertyPath,
+      ) ??
+      mergeNestedPropertyTypes(
+        property.typeName,
+        createNestedObjectType(rest, assignedType),
+        currentExplicitPaths,
+        nextExplicitPaths,
+        propertyPath,
+      ))
+    : mergeNestedPropertyTypes(
+        property.typeName,
+        assignedType,
+        currentExplicitPaths,
+        nextExplicitPaths,
+        propertyPath,
+      );
+  return formatObjectTypeShape({
+    ...objectShape,
+    properties: objectShape.properties.map((candidate) =>
+      candidate === property ? { ...candidate, typeName } : candidate,
+    ),
+  });
+}
+
+function mergeReplacementTypes(
+  currentType: string,
+  nextType: string,
+  currentExplicitPaths: string[][] | undefined,
+  nextExplicitPaths: string[][] | undefined,
+  path: string[],
+): string {
+  if (isExplicitTypePath(currentExplicitPaths, path)) {
+    return currentType;
+  }
+  if (isExplicitTypePath(nextExplicitPaths, path)) {
+    return nextType;
+  }
+  if (currentType === 'any' && nextType !== 'any') {
+    return nextType;
+  }
+  if (nextType === 'any' || currentType === nextType) {
+    return currentType;
+  }
+  return formatUnionType(
+    [
+      ...splitTopLevelUnionTypes(currentType),
+      ...splitTopLevelUnionTypes(nextType),
+    ].filter(
+      (typeName, index, typeNames) => typeNames.indexOf(typeName) === index,
+    ),
+  );
+}
+
+function isArrayIndex(part: string): boolean {
+  return part === dynamicStringIndexProperty || /^(?:0|[1-9]\d*)$/.test(part);
 }
 
 function mergePropertyPaths(
@@ -200,16 +394,51 @@ function mergePropertyTypes(
   nextExplicitPaths: string[][] | undefined = undefined,
   path: string[] = [],
 ): string | undefined {
-  const currentObject = parseObjectType(currentType);
-  const nextObject = parseObjectType(nextType);
+  const currentMembers = splitTopLevelUnionTypes(currentType);
+  if (currentMembers.length > 1) {
+    let mergedMember = false;
+    const typeNames = currentMembers.map((member) => {
+      const merged = mergeObjectTypes(
+        member,
+        nextType,
+        currentExplicitPaths,
+        nextExplicitPaths,
+        path,
+      );
+      if (merged !== undefined) {
+        mergedMember = true;
+        return merged;
+      }
+      return member;
+    });
+    return mergedMember ? formatUnionType(typeNames) : undefined;
+  }
+  return mergeObjectTypes(
+    currentType,
+    nextType,
+    currentExplicitPaths,
+    nextExplicitPaths,
+    path,
+  );
+}
+
+function mergeObjectTypes(
+  currentType: string,
+  nextType: string,
+  currentExplicitPaths: string[][] | undefined,
+  nextExplicitPaths: string[][] | undefined,
+  path: string[],
+): string | undefined {
+  const currentObject = parseObjectTypeShape(currentType);
+  const nextObject = parseObjectTypeShape(nextType);
   if (!currentObject || !nextObject) {
     return;
   }
   const properties = new Map<string, ObjectTypeProperty>();
-  for (const property of currentObject) {
+  for (const property of currentObject.properties) {
     properties.set(property.name, property);
   }
-  for (const property of nextObject) {
+  for (const property of nextObject.properties) {
     const existing = properties.get(property.name);
     if (!existing) {
       properties.set(property.name, property);
@@ -228,7 +457,10 @@ function mergePropertyTypes(
     );
     properties.set(property.name, { ...existing, typeName });
   }
-  return formatObjectType([...properties.values()]);
+  return formatObjectTypeShape({
+    properties: [...properties.values()],
+    open: currentObject.open || nextObject.open,
+  });
 }
 
 function mergeNestedPropertyTypes(
@@ -364,10 +596,10 @@ function inferArrayLiteralType(text: string, start: number): string {
   if (!elementTypes.length) {
     return 'any[]';
   }
-  return formatArrayType(elementTypes);
+  return formatInferredArrayType(elementTypes);
 }
 
-function formatArrayType(elementTypes: string[]): string {
+function formatInferredArrayType(elementTypes: string[]): string {
   const uniqueElementTypes = [...new Set(elementTypes)];
   const elementType = uniqueElementTypes.join(' | ');
   const requiresParentheses =
