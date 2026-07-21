@@ -1239,6 +1239,66 @@ describe('global type virtual code', () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it('infers element types assigned to initially empty arrays', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.items = []
+    self.items[0] = { hoge: 1 }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('items: { hoge: number; }[];');
+  });
+
+  it('unions direct inferred array element replacements', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    self.items = [{ known: true }]
+    self.items[0] = { hoge: 1 }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain(
+      'items: ({ known: boolean; } | { hoge: number; })[];',
+    );
+  });
+
+  it('infers element types replaced through computed array indexes', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <script>
+    const self = this
+    const index = 0
+    self.items = []
+    self.items[index] = { hoge: 1 }
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain('items: { hoge: number; }[];');
+  });
+
   it('preserves known nested property types after any assignments', () => {
     // Arrange
     const code = createVirtualCode(

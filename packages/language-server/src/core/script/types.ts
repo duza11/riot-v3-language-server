@@ -10,6 +10,7 @@ export interface ScriptPropertyAssignment {
   isAssignment: boolean;
   explicitTypePaths?: string[][];
   hasExplicitFirstParameterType?: boolean;
+  assignedTypeName?: string;
 }
 
 export interface AssignedPropertyType {

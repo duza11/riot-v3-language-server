@@ -83,6 +83,30 @@ export function formatObjectTypeShape(shape: ObjectTypeShape): string {
   return shape.open ? `${typeName} & ${openObjectType}` : typeName;
 }
 
+export function parseArrayType(typeName: string): string | undefined {
+  const trimmed = typeName.trim();
+  if (!trimmed.endsWith('[]')) {
+    return;
+  }
+  const elementType = trimmed.slice(0, -2).trim();
+  if (
+    elementType.startsWith('(') &&
+    scanBalanced(elementType, 0, '(', ')') === elementType.length
+  ) {
+    return elementType.slice(1, -1).trim();
+  }
+  return elementType || undefined;
+}
+
+export function formatArrayType(elementType: string): string {
+  const trimmed = elementType.trim();
+  const requiresParentheses =
+    splitTopLevelUnionTypes(trimmed).length > 1 ||
+    trimmed.includes(' & ') ||
+    trimmed.includes('=>');
+  return `${requiresParentheses ? `(${trimmed})` : trimmed}[]`;
+}
+
 export function formatUnionType(typeNames: string[]): string {
   return typeNames.map(parenthesizeUnionMember).join(' | ');
 }

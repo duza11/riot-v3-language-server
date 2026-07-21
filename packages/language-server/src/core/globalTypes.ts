@@ -4,6 +4,7 @@ import type { EachScope, TemplateEventBinding } from './template';
 import {
   formatObjectTypeShape,
   formatUnionType,
+  parseArrayType,
   parseObjectTypeShape,
   splitTopLevelUnionTypes,
 } from './typeSyntax';
@@ -488,21 +489,6 @@ function mergePropertyPathTrie(
     }
     mergePropertyPathTrie(targetChild, sourceChild);
   }
-}
-
-function parseArrayType(typeName: string): string | undefined {
-  const trimmed = typeName.trim();
-  if (!trimmed.endsWith('[]')) {
-    return;
-  }
-  const elementType = trimmed.slice(0, -2).trim();
-  if (
-    elementType.startsWith('(') &&
-    scanBalanced(elementType, 0, '(', ')') === elementType.length
-  ) {
-    return elementType.slice(1, -1).trim();
-  }
-  return elementType || undefined;
 }
 
 function normalizeObjectTypePropertyName(name: string): string {

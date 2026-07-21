@@ -199,6 +199,99 @@ describe('script type inference', () => {
     expect(type).toBe('boolean');
   });
 
+  it('adds concrete properties to inferred array elements', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ items[0].hoge }</p>
+    <script>
+      const self = this
+      self.items = [{ known: true }]
+      self.items[0].hoge = 1
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(code, 'this.items[0].hoge', 'hoge');
+
+    // Assert
+    expect(type).toBe('number');
+  });
+
+  it('adds concrete properties to heterogeneous array object members', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ items[0].shared }</p>
+    <script>
+      const self = this
+      self.items = [{ left: 1 }, { right: 'value' }]
+      self.items[0].shared = true
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.items[0].shared',
+      'shared',
+    );
+
+    // Assert
+    expect(type).toBe('boolean');
+  });
+
+  it('adds concrete properties through nested inferred arrays', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ matrix[0][0].shared }</p>
+    <script>
+      const self = this
+      self.matrix = [[{ known: true }]]
+      self.matrix[0][0].shared = true
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.matrix[0][0].shared',
+      'shared',
+    );
+
+    // Assert
+    expect(type).toBe('boolean');
+  });
+
+  it('adds concrete properties through computed array indexes', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ items[0].shared }</p>
+    <script>
+      const self = this
+      const index = 0
+      self.items = [{ known: true }]
+      self.items[index].shared = true
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.items[0].shared',
+      'shared',
+    );
+
+    // Assert
+    expect(type).toBe('boolean');
+  });
+
   it('preserves an existing nested JSDoc property type', () => {
     // Arrange
     const code = createVirtualCode(`
