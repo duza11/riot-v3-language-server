@@ -47,7 +47,7 @@ Riot.js projects do not need to install TypeScript locally unless they want the 
 
 ### Dynamic properties from any assignments
 
-The language server keeps inferred object properties strict by default. Set `initializationOptions.riotV3.allowDynamicPropertiesFromAnyAssignments` to `true` to allow dynamic child properties when a component property or nested property is also assigned a value inferred as `any`.
+The language server keeps inferred object properties strict by default. Set `initializationOptions.riotV3.allowDynamicPropertiesFromAnyAssignments` to `true` to allow dynamic child properties when a component property or nested property is also assigned a value inferred as `any`. Dynamic access is propagated through inferred nested objects and array elements, including static index and computed property assignments.
 
 ```lua
 init_options = {

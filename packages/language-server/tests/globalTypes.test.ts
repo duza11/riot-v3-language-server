@@ -1458,6 +1458,43 @@ describe('global type virtual code', () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it('handles many sibling dynamic property paths', () => {
+    // Arrange
+    const propertyCount = 100;
+    const initialProperties = Array.from(
+      { length: propertyCount },
+      (_, index) => `value${index}: { known: ${index} }`,
+    ).join(', ');
+    const dynamicAssignments = Array.from(
+      { length: propertyCount },
+      (_, index) => `self.state.value${index} = self.opts.value${index}`,
+    ).join('\n');
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <script>
+    const self = this
+    self.state = { ${initialProperties} }
+    ${dynamicAssignments}
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain(
+      'value0: { known: number; } & Record<string, any>;',
+    );
+    expect(globals).toContain(
+      'value99: { known: number; } & Record<string, any>;',
+    );
+  });
+
   it('allows dynamic properties at deeply nested assignment paths', () => {
     // Arrange
     const code = createVirtualCode(
