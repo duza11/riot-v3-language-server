@@ -132,6 +132,73 @@ describe('script type inference', () => {
     expect(type).toBe('number');
   });
 
+  it('adds concrete properties to every inferred object union member', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ obj.shared }</p>
+    <script>
+      const self = this
+      self.obj = { left: 1 }
+      self.obj = { right: 'value' }
+      self.obj.shared = true
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(code, 'this.obj.shared', 'shared');
+
+    // Assert
+    expect(type).toBe('boolean');
+  });
+
+  it('adds concrete properties to object members in nullish unions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ obj?.shared }</p>
+    <script>
+      const self = this
+      self.obj = null
+      self.obj = { known: 'value' }
+      self.obj.shared = true
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(code, 'this.obj?.shared', 'shared');
+
+    // Assert
+    expect(type).toBe('boolean | undefined');
+  });
+
+  it('adds nested properties to object members in root unions', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ state.child.shared }</p>
+    <script>
+      const self = this
+      self.state = { child: { left: 1 } }
+      self.state = { child: { right: 'value' } }
+      self.state.child.shared = true
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.state.child.shared',
+      'shared',
+    );
+
+    // Assert
+    expect(type).toBe('boolean');
+  });
+
   it('preserves an existing nested JSDoc property type', () => {
     // Arrange
     const code = createVirtualCode(`

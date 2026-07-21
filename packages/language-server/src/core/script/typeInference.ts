@@ -152,13 +152,19 @@ export function mergeScriptProperty(
       existing.explicitTypePaths,
       next.explicitTypePaths,
     );
+    const mergedTypeNames = typeName
+      ? splitTopLevelUnionTypes(typeName)
+      : undefined;
     return typeName !== undefined
       ? {
           ...existing,
           typeName,
           inferredAnyAssignmentPaths,
           explicitTypePaths,
-          unionTypeNames: undefined,
+          unionTypeNames:
+            mergedTypeNames && mergedTypeNames.length > 1
+              ? mergedTypeNames
+              : undefined,
         }
       : { ...existing, inferredAnyAssignmentPaths, explicitTypePaths };
   }
@@ -200,6 +206,41 @@ function mergePropertyTypes(
   currentExplicitPaths: string[][] | undefined = undefined,
   nextExplicitPaths: string[][] | undefined = undefined,
   path: string[] = [],
+): string | undefined {
+  const currentMembers = splitTopLevelUnionTypes(currentType);
+  if (currentMembers.length > 1) {
+    let mergedMember = false;
+    const typeNames = currentMembers.map((member) => {
+      const merged = mergeObjectTypes(
+        member,
+        nextType,
+        currentExplicitPaths,
+        nextExplicitPaths,
+        path,
+      );
+      if (merged !== undefined) {
+        mergedMember = true;
+        return merged;
+      }
+      return member;
+    });
+    return mergedMember ? formatUnionType(typeNames) : undefined;
+  }
+  return mergeObjectTypes(
+    currentType,
+    nextType,
+    currentExplicitPaths,
+    nextExplicitPaths,
+    path,
+  );
+}
+
+function mergeObjectTypes(
+  currentType: string,
+  nextType: string,
+  currentExplicitPaths: string[][] | undefined,
+  nextExplicitPaths: string[][] | undefined,
+  path: string[],
 ): string | undefined {
   const currentObject = parseObjectTypeShape(currentType);
   const nextObject = parseObjectTypeShape(nextType);

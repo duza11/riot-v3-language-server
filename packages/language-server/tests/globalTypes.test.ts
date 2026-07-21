@@ -1218,6 +1218,27 @@ describe('global type virtual code', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  it('keeps primitive union members strict after object augmentations', () => {
+    // Arrange
+    const code = createVirtualCode(`
+<demo-widget>
+  <p>{ obj.shared }</p>
+  <script>
+    const self = this
+    self.obj = { known: 'value' }
+    self.obj = 'text'
+    self.obj.shared = true
+  </script>
+</demo-widget>
+`);
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it('preserves known nested property types after any assignments', () => {
     // Arrange
     const code = createVirtualCode(
