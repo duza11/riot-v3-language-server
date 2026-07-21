@@ -31,8 +31,7 @@ import type {
   ScriptJSDocTypedBinding,
   ScriptPropertyAssignment,
 } from './types';
-
-const dynamicStringIndexProperty = '[key: string]';
+import { dynamicStringIndexProperty } from './types';
 
 export function getScriptProperties(
   snapshot: ts.IScriptSnapshot,

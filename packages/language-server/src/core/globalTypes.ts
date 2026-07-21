@@ -332,98 +332,183 @@ function parseEventCollectionPath(expression: string): string[] | undefined {
 function getDynamicObjectPropertyType(
   property: ScriptProperty,
 ): string | undefined {
-  const dynamicPaths = property.inferredAnyAssignmentPaths?.filter(
-    (path) =>
-      !property.explicitTypePaths?.some((explicitPath) =>
-        pathStartsWith(path, explicitPath),
-      ),
-  );
+  const dynamicPaths = property.inferredAnyAssignmentPaths;
   if (!dynamicPaths?.length) {
     return;
   }
-  const nestedPaths = dynamicPaths.filter((path) => path.length > 0);
-  let typeName = applyDynamicObjectPaths(property.typeName, nestedPaths);
-  if (dynamicPaths.some((path) => path.length === 0)) {
-    typeName = getDynamicObjectTypeName(typeName) ?? typeName;
-  }
-  return typeName;
-}
-
-function applyDynamicObjectPaths(typeName: string, paths: string[][]): string {
-  if (!paths.length) {
-    return typeName;
-  }
-  const members = splitTopLevelUnionTypes(typeName);
-  return formatUnionType(
-    members.map((member) => applyDynamicObjectPathsToMember(member, paths)),
+  return applyDynamicObjectPaths(
+    property.typeName,
+    createPropertyPathTrie(dynamicPaths),
+    createPropertyPathTrie(property.explicitTypePaths ?? []),
+    false,
   );
 }
 
-function applyDynamicObjectPathsToMember(
-  typeName: string,
-  paths: string[][],
-): string {
-  const properties = parseObjectType(typeName);
-  if (!properties) {
-    return typeName;
-  }
-  return formatObjectType(
-    properties.map((property) => {
-      const propertyName = normalizeObjectTypePropertyName(property.name);
-      const matchingPaths = paths
-        .filter((path) => path[0] === propertyName)
-        .map((path) => path.slice(1));
-      if (!matchingPaths.length) {
-        return property;
+interface PropertyPathTrie {
+  terminal: boolean;
+  children: Map<string, PropertyPathTrie>;
+}
+
+const emptyPropertyPathTrie: PropertyPathTrie = {
+  terminal: false,
+  children: new Map(),
+};
+
+function createPropertyPathTrie(paths: string[][]): PropertyPathTrie {
+  const root: PropertyPathTrie = {
+    terminal: false,
+    children: new Map(),
+  };
+  for (const path of paths) {
+    let current = root;
+    for (const part of path) {
+      let child = current.children.get(part);
+      if (!child) {
+        child = {
+          terminal: false,
+          children: new Map(),
+        };
+        current.children.set(part, child);
       }
-      const dynamicType = matchingPaths.some((path) => path.length === 0)
-        ? getDynamicObjectTypeName(property.typeName)
-        : undefined;
-      return {
-        ...property,
-        typeName:
-          dynamicType ??
-          applyDynamicObjectPaths(property.typeName, matchingPaths),
-      };
-    }),
-  );
+      current = child;
+    }
+    current.terminal = true;
+  }
+  return root;
 }
 
-function getDynamicObjectTypeName(typeName: string): string | undefined {
+function applyDynamicObjectPaths(
+  typeName: string,
+  dynamicPaths: PropertyPathTrie,
+  explicitPaths: PropertyPathTrie | undefined,
+  inheritedDynamic: boolean,
+): string {
+  if (explicitPaths?.terminal) {
+    return typeName;
+  }
+  const isDynamic = inheritedDynamic || dynamicPaths.terminal;
+  if (!isDynamic && !dynamicPaths.children.size) {
+    return typeName;
+  }
   const members = splitTopLevelUnionTypes(typeName);
+  const parsedMembers = members.map((member) => ({
+    member,
+    arrayElementType: parseArrayType(member),
+    properties: parseObjectType(member),
+  }));
+  const canMakeDynamic =
+    isDynamic &&
+    parsedMembers.every(
+      ({ member, arrayElementType, properties }) =>
+        arrayElementType !== undefined ||
+        properties !== undefined ||
+        isNullishType(member),
+    );
+  let hasObjectMember = false;
+  const transformedMembers = parsedMembers.map(
+    ({ member, arrayElementType, properties }) => {
+      if (arrayElementType !== undefined) {
+        const elementDynamicPaths = getArrayElementPathTrie(dynamicPaths);
+        if (
+          !isDynamic &&
+          !elementDynamicPaths.terminal &&
+          !elementDynamicPaths.children.size
+        ) {
+          return member;
+        }
+        const transformedElementType = applyDynamicObjectPaths(
+          arrayElementType,
+          elementDynamicPaths,
+          explicitPaths ? getArrayElementPathTrie(explicitPaths) : undefined,
+          isDynamic,
+        );
+        return transformedElementType === arrayElementType
+          ? member
+          : `(${transformedElementType})[]`;
+      }
+      if (!properties) {
+        return member;
+      }
+      hasObjectMember = true;
+      const objectType = formatObjectType(
+        properties.map((property) => {
+          const propertyName = normalizeObjectTypePropertyName(property.name);
+          return {
+            ...property,
+            typeName: applyDynamicObjectPaths(
+              property.typeName,
+              dynamicPaths.children.get(propertyName) ?? emptyPropertyPathTrie,
+              explicitPaths?.children.get(propertyName),
+              isDynamic,
+            ),
+          };
+        }),
+      );
+      return canMakeDynamic
+        ? `${objectType} & Record<string, any>`
+        : objectType;
+    },
+  );
   if (
-    !members.every(
-      (member) => isObjectLiteralType(member) || isNullishType(member),
+    canMakeDynamic &&
+    !hasObjectMember &&
+    parsedMembers.every(
+      ({ arrayElementType }) => arrayElementType === undefined,
     )
   ) {
-    return;
+    transformedMembers.push('Record<string, any>');
   }
-  const dynamicMembers = members.map((member) =>
-    isObjectLiteralType(member) ? `${member} & Record<string, any>` : member,
-  );
-  if (!members.some(isObjectLiteralType)) {
-    dynamicMembers.push('Record<string, any>');
-  }
-  return formatUnionType(dynamicMembers);
+  return formatUnionType(transformedMembers);
 }
 
-function pathStartsWith(path: string[], prefix: string[]): boolean {
-  return (
-    prefix.length <= path.length &&
-    prefix.every((part, index) => path[index] === part)
-  );
+function getArrayElementPathTrie(paths: PropertyPathTrie): PropertyPathTrie {
+  const elementPaths: PropertyPathTrie = {
+    terminal: false,
+    children: new Map(),
+  };
+  for (const [part, child] of paths.children) {
+    if (/^(?:0|[1-9]\d*)$/.test(part)) {
+      mergePropertyPathTrie(elementPaths, child);
+    }
+  }
+  return elementPaths;
+}
+
+function mergePropertyPathTrie(
+  target: PropertyPathTrie,
+  source: PropertyPathTrie,
+): void {
+  target.terminal ||= source.terminal;
+  for (const [part, sourceChild] of source.children) {
+    let targetChild = target.children.get(part);
+    if (!targetChild) {
+      targetChild = {
+        terminal: false,
+        children: new Map(),
+      };
+      target.children.set(part, targetChild);
+    }
+    mergePropertyPathTrie(targetChild, sourceChild);
+  }
+}
+
+function parseArrayType(typeName: string): string | undefined {
+  const trimmed = typeName.trim();
+  if (!trimmed.endsWith('[]')) {
+    return;
+  }
+  const elementType = trimmed.slice(0, -2).trim();
+  if (
+    elementType.startsWith('(') &&
+    scanBalanced(elementType, 0, '(', ')') === elementType.length
+  ) {
+    return elementType.slice(1, -1).trim();
+  }
+  return elementType || undefined;
 }
 
 function normalizeObjectTypePropertyName(name: string): string {
   return name[0] === "'" || name[0] === '"' ? name.slice(1, -1) : name;
-}
-
-function isObjectLiteralType(typeName: string): boolean {
-  const trimmed = typeName.trim();
-  return (
-    trimmed.startsWith('{') &&
-    scanBalanced(trimmed, 0, '{', '}') === trimmed.length
-  );
 }
 
 function isNullishType(typeName: string): boolean {

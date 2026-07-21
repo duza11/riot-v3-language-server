@@ -44,7 +44,7 @@
           "type": "boolean",
           "default": false,
           "scope": "window",
-          "description": "Allow dynamic child properties when a component property or nested property is assigned a value typed as any. Known object shapes, nullish initializers, and explicit JSDoc types are preserved. Requires reloading VS Code."
+          "description": "Allow dynamic child properties recursively through inferred objects and arrays when a component property or nested property is assigned a value typed as any. Known object shapes, nullish initializers, and explicit JSDoc types are preserved. Requires reloading VS Code."
         }
       }
     },

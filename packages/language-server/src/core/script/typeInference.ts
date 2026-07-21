@@ -18,7 +18,11 @@ import {
   inferJSDocFunctionType,
   parseJSDocType,
 } from './jsdoc';
-import type { AssignedPropertyType, ScriptPropertyAssignment } from './types';
+import {
+  type AssignedPropertyType,
+  dynamicStringIndexProperty,
+  type ScriptPropertyAssignment,
+} from './types';
 
 export function inferAssignedPropertyTypeIfAssigned(
   text: string,
@@ -87,7 +91,7 @@ export function createScriptPropertyFromAssignment(
       assignment.isAssignment &&
       assignment.typeOrigin === 'inferred' &&
       assignment.typeName === 'any'
-        ? [path]
+        ? [getInferredAnyAssignmentPath(path)]
         : undefined,
     explicitTypePaths:
       assignment.typeOrigin === 'explicit'
@@ -98,6 +102,11 @@ export function createScriptPropertyFromAssignment(
           ]),
     hasExplicitFirstParameterType: assignment.hasExplicitFirstParameterType,
   };
+}
+
+function getInferredAnyAssignmentPath(path: string[]): string[] {
+  const dynamicIndex = path.indexOf(dynamicStringIndexProperty);
+  return dynamicIndex === -1 ? path : path.slice(0, dynamicIndex);
 }
 
 function createNestedObjectType(path: string[], typeName: string): string {

@@ -1170,6 +1170,331 @@ describe('global type virtual code', () => {
     expect(type).toBe('string');
   });
 
+  it('allows dynamic properties below a root any assignment', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = { childObj: { known: 'value' } }
+    self.parentObj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'parentObj: { childObj: { known: string; } & Record<string, any>; } & Record<string, any>;',
+    );
+  });
+
+  it('allows nested nullish properties below a root any assignment', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj?.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = { childObj: null }
+    self.parentObj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows nested dynamic properties in root object unions', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ data.child.dynamic }</p>
+  <script>
+    const self = this
+    self.data = { child: { first: 'value' } }
+    self.data = { child: { second: 1 } }
+    self.data = self.opts.data
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('keeps nested JSDoc properties strict below a root any assignment', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = {
+      /** @type {{ known: string }} */
+      childObj: { known: 'value' }
+    }
+    self.parentObj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('allows dynamic properties on inferred array elements after a root any assignment', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].dynamic }</p>
+  <script>
+    const self = this
+    self.items = [{ known: 'value' }]
+    self.items = self.opts.items
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'items: ({ known: string; } & Record<string, any>)[];',
+    );
+  });
+
+  it('allows dynamic properties below statically indexed array elements', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].child.dynamic }</p>
+  <script>
+    const self = this
+    self.items = [{ child: { known: 'value' } }]
+    self.items[0].child = self.opts.child
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows dynamic properties on deeply nested inferred array elements', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ state.groups[0].items[0].dynamic }</p>
+  <script>
+    const self = this
+    self.state = { groups: [{ items: [{ known: true }] }] }
+    self.state = self.opts.state
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows dynamic properties on heterogeneous inferred array elements', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].dynamic }</p>
+  <script>
+    const self = this
+    self.items = [{ first: 'value' }, { second: 1 }]
+    self.items = self.opts.items
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'items: ({ first: string; } & Record<string, any> | { second: number; } & Record<string, any>)[];',
+    );
+  });
+
+  it('allows computed dynamic properties on statically indexed array elements', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].dynamic }</p>
+  <script>
+    const self = this
+    const key = 'dynamic'
+    self.items = [{ known: 'value' }]
+    self.items[0][key] = self.opts.value
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('preserves known array element property types after computed assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].known }</p>
+  <script>
+    const self = this
+    const key = 'dynamic'
+    self.items = [{ known: 'value' }]
+    self.items[0][key] = self.opts.value
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.items[0].known',
+      'known',
+    );
+
+    // Assert
+    expect(type).toBe('string');
+  });
+
+  it('keeps JSDoc array element properties strict after computed assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].dynamic }</p>
+  <script>
+    const self = this
+    const key = 'dynamic'
+    /** @type {{ known: string }[]} */
+    self.items = [{ known: 'value' }]
+    self.items[0][key] = self.opts.value
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('handles many sibling dynamic property paths', () => {
+    // Arrange
+    const propertyCount = 100;
+    const initialProperties = Array.from(
+      { length: propertyCount },
+      (_, index) => `value${index}: { known: ${index} }`,
+    ).join(', ');
+    const dynamicAssignments = Array.from(
+      { length: propertyCount },
+      (_, index) => `self.state.value${index} = self.opts.value${index}`,
+    ).join('\n');
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <script>
+    const self = this
+    self.state = { ${initialProperties} }
+    ${dynamicAssignments}
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(globals).toContain(
+      'value0: { known: number; } & Record<string, any>;',
+    );
+    expect(globals).toContain(
+      'value99: { known: number; } & Record<string, any>;',
+    );
+  });
+
   it('allows dynamic properties at deeply nested assignment paths', () => {
     // Arrange
     const code = createVirtualCode(

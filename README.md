@@ -19,7 +19,7 @@ This repository contains a Volar-based language server for Riot.js v3 `.tag` fil
 
 ## Configuration
 
-Inferred object properties are strict by default. VS Code users can enable dynamic child properties for component properties or nested properties that receive an inferred `any` value. Known object shapes and `null` or `undefined` initializers are preserved:
+Inferred object properties are strict by default. VS Code users can enable dynamic child properties for component properties or nested properties that receive an inferred `any` value. The setting applies recursively to inferred object and array shapes, including static index and computed property assignments. Known object shapes and `null` or `undefined` initializers are preserved:
 
 ```json
 {
