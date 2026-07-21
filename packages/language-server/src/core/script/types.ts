@@ -1,5 +1,7 @@
 import type { ScriptProperty } from '../types';
 
+export const dynamicStringIndexProperty = '[key: string]';
+
 export interface ScriptPropertyAssignment {
   path: string[];
   sourceOffset: number;

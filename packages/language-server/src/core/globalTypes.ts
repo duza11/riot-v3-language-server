@@ -409,7 +409,11 @@ function applyDynamicObjectPaths(
     ({ member, arrayElementType, properties }) => {
       if (arrayElementType !== undefined) {
         const elementDynamicPaths = getArrayElementPathTrie(dynamicPaths);
-        if (!isDynamic && !elementDynamicPaths.children.size) {
+        if (
+          !isDynamic &&
+          !elementDynamicPaths.terminal &&
+          !elementDynamicPaths.children.size
+        ) {
           return member;
         }
         const transformedElementType = applyDynamicObjectPaths(

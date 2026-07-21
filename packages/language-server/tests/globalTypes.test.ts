@@ -1378,6 +1378,86 @@ describe('global type virtual code', () => {
     );
   });
 
+  it('allows computed dynamic properties on statically indexed array elements', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].dynamic }</p>
+  <script>
+    const self = this
+    const key = 'dynamic'
+    self.items = [{ known: 'value' }]
+    self.items[0][key] = self.opts.value
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('preserves known array element property types after computed assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].known }</p>
+  <script>
+    const self = this
+    const key = 'dynamic'
+    self.items = [{ known: 'value' }]
+    self.items[0][key] = self.opts.value
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.items[0].known',
+      'known',
+    );
+
+    // Assert
+    expect(type).toBe('string');
+  });
+
+  it('keeps JSDoc array element properties strict after computed assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].dynamic }</p>
+  <script>
+    const self = this
+    const key = 'dynamic'
+    /** @type {{ known: string }[]} */
+    self.items = [{ known: 'value' }]
+    self.items[0][key] = self.opts.value
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it('allows dynamic properties at deeply nested assignment paths', () => {
     // Arrange
     const code = createVirtualCode(
