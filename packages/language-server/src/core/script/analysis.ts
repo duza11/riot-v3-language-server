@@ -384,6 +384,7 @@ function scanOwnerPropertyAssignment(
         : 'any',
     typeOrigin: assignedType?.typeOrigin ?? 'inferred',
     isAssignment: assignedType !== undefined,
+    explicitTypePaths: assignedType?.explicitTypePaths,
     hasExplicitFirstParameterType: assignedType?.hasExplicitFirstParameterType,
   };
 }

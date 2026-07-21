@@ -111,4 +111,56 @@ describe('script type inference', () => {
     // Assert
     expect(type).toBe('string | null');
   });
+
+  it('preserves an existing nested JSDoc property type', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ parentObj.childObj }</p>
+    <script>
+      const self = this
+      self.parentObj = {
+        /** @type {string} */
+        childObj: 'value'
+      }
+      self.parentObj.childObj = 1
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.parentObj.childObj',
+      'childObj',
+    );
+
+    // Assert
+    expect(type).toBe('string');
+  });
+
+  it('prioritizes a later nested JSDoc property type', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ parentObj.childObj }</p>
+    <script>
+      const self = this
+      self.parentObj = { childObj: null }
+      /** @type {string} */
+      self.parentObj.childObj = 'value'
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.parentObj.childObj',
+      'childObj',
+    );
+
+    // Assert
+    expect(type).toBe('string');
+  });
 });

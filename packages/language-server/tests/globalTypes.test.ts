@@ -1090,6 +1090,161 @@ describe('global type virtual code', () => {
     expect(globals).toContain('data: null | Record<string, any>;');
   });
 
+  it('allows dynamic properties after nested null and any assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj?.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = { childObj: null }
+    self.parentObj.childObj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'parentObj: { childObj: null | Record<string, any>; };',
+    );
+  });
+
+  it('allows dynamic properties on nested inferred object shapes', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = { childObj: { known: 'value' } }
+    self.parentObj.childObj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('preserves known nested property types after any assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj.known }</p>
+  <script>
+    const self = this
+    self.parentObj = { childObj: { known: 'value' } }
+    self.parentObj.childObj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.parentObj.childObj.known',
+      'known',
+    );
+
+    // Assert
+    expect(type).toBe('string');
+  });
+
+  it('allows dynamic properties at deeply nested assignment paths', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ state.parent.child?.dynamic }</p>
+  <script>
+    const self = this
+    self.state = { parent: { child: null } }
+    self.state.parent.child = self.opts.child
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('keeps nested primitive properties strict after any assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = { childObj: 'value' }
+    self.parentObj.childObj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('keeps nested JSDoc properties strict after any assignments', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ parentObj.childObj.dynamic }</p>
+  <script>
+    const self = this
+    self.parentObj = {
+      /** @type {{ known: string }} */
+      childObj: { known: 'value' }
+    }
+    self.parentObj.childObj = self.opts.obj
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplatePropertyDoesNotExistDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it('keeps null-only properties strict when they are read in scripts', () => {
     // Arrange
     const code = createVirtualCode(
