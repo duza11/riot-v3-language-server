@@ -393,39 +393,114 @@ function applyDynamicObjectPaths(
   const members = splitTopLevelUnionTypes(typeName);
   const parsedMembers = members.map((member) => ({
     member,
+    arrayElementType: parseArrayType(member),
     properties: parseObjectType(member),
   }));
   const canMakeDynamic =
     isDynamic &&
     parsedMembers.every(
-      ({ member, properties }) => properties || isNullishType(member),
+      ({ member, arrayElementType, properties }) =>
+        arrayElementType !== undefined ||
+        properties !== undefined ||
+        isNullishType(member),
     );
   let hasObjectMember = false;
-  const transformedMembers = parsedMembers.map(({ member, properties }) => {
-    if (!properties) {
-      return member;
-    }
-    hasObjectMember = true;
-    const objectType = formatObjectType(
-      properties.map((property) => {
-        const propertyName = normalizeObjectTypePropertyName(property.name);
-        return {
-          ...property,
-          typeName: applyDynamicObjectPaths(
-            property.typeName,
-            dynamicPaths.children.get(propertyName) ?? emptyPropertyPathTrie,
-            explicitPaths?.children.get(propertyName),
-            isDynamic,
-          ),
-        };
-      }),
-    );
-    return canMakeDynamic ? `${objectType} & Record<string, any>` : objectType;
-  });
-  if (canMakeDynamic && !hasObjectMember) {
+  const transformedMembers = parsedMembers.map(
+    ({ member, arrayElementType, properties }) => {
+      if (arrayElementType !== undefined) {
+        const elementDynamicPaths = getArrayElementPathTrie(dynamicPaths);
+        if (!isDynamic && !elementDynamicPaths.children.size) {
+          return member;
+        }
+        const transformedElementType = applyDynamicObjectPaths(
+          arrayElementType,
+          elementDynamicPaths,
+          explicitPaths ? getArrayElementPathTrie(explicitPaths) : undefined,
+          isDynamic,
+        );
+        return transformedElementType === arrayElementType
+          ? member
+          : `(${transformedElementType})[]`;
+      }
+      if (!properties) {
+        return member;
+      }
+      hasObjectMember = true;
+      const objectType = formatObjectType(
+        properties.map((property) => {
+          const propertyName = normalizeObjectTypePropertyName(property.name);
+          return {
+            ...property,
+            typeName: applyDynamicObjectPaths(
+              property.typeName,
+              dynamicPaths.children.get(propertyName) ?? emptyPropertyPathTrie,
+              explicitPaths?.children.get(propertyName),
+              isDynamic,
+            ),
+          };
+        }),
+      );
+      return canMakeDynamic
+        ? `${objectType} & Record<string, any>`
+        : objectType;
+    },
+  );
+  if (
+    canMakeDynamic &&
+    !hasObjectMember &&
+    parsedMembers.every(
+      ({ arrayElementType }) => arrayElementType === undefined,
+    )
+  ) {
     transformedMembers.push('Record<string, any>');
   }
   return formatUnionType(transformedMembers);
+}
+
+function getArrayElementPathTrie(paths: PropertyPathTrie): PropertyPathTrie {
+  const elementPaths: PropertyPathTrie = {
+    terminal: false,
+    children: new Map(),
+  };
+  for (const [part, child] of paths.children) {
+    if (/^(?:0|[1-9]\d*)$/.test(part)) {
+      mergePropertyPathTrie(elementPaths, child);
+    }
+  }
+  return elementPaths;
+}
+
+function mergePropertyPathTrie(
+  target: PropertyPathTrie,
+  source: PropertyPathTrie,
+): void {
+  target.terminal ||= source.terminal;
+  for (const [part, sourceChild] of source.children) {
+    let targetChild = target.children.get(part);
+    if (!targetChild) {
+      targetChild = {
+        terminal: false,
+        children: new Map(),
+      };
+      target.children.set(part, targetChild);
+    }
+    mergePropertyPathTrie(targetChild, sourceChild);
+  }
+}
+
+function parseArrayType(typeName: string): string | undefined {
+  const trimmed = typeName.trim();
+  if (!trimmed.endsWith('[]')) {
+    return;
+  }
+  const elementType = trimmed.slice(0, -2).trim();
+  if (
+    elementType.startsWith('(') &&
+    scanBalanced(elementType, 0, '(', ')') === elementType.length
+  ) {
+    return elementType.slice(1, -1).trim();
+  }
+  return elementType || undefined;
 }
 
 function normalizeObjectTypePropertyName(name: string): string {

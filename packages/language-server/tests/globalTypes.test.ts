@@ -1274,6 +1274,110 @@ describe('global type virtual code', () => {
     expect(diagnostics).toHaveLength(1);
   });
 
+  it('allows dynamic properties on inferred array elements after a root any assignment', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].dynamic }</p>
+  <script>
+    const self = this
+    self.items = [{ known: 'value' }]
+    self.items = self.opts.items
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'items: ({ known: string; } & Record<string, any>)[];',
+    );
+  });
+
+  it('allows dynamic properties below statically indexed array elements', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].child.dynamic }</p>
+  <script>
+    const self = this
+    self.items = [{ child: { known: 'value' } }]
+    self.items[0].child = self.opts.child
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows dynamic properties on deeply nested inferred array elements', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ state.groups[0].items[0].dynamic }</p>
+  <script>
+    const self = this
+    self.state = { groups: [{ items: [{ known: true }] }] }
+    self.state = self.opts.state
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('allows dynamic properties on heterogeneous inferred array elements', () => {
+    // Arrange
+    const code = createVirtualCode(
+      `
+<demo-widget>
+  <p>{ items[0].dynamic }</p>
+  <script>
+    const self = this
+    self.items = [{ first: 'value' }, { second: 1 }]
+    self.items = self.opts.items
+  </script>
+</demo-widget>
+`,
+      undefined,
+      { allowDynamicPropertiesFromAnyAssignments: true },
+    );
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code]);
+    const globals = getGlobalTypesText(code);
+
+    // Assert
+    expect(diagnostics).toEqual([]);
+    expect(globals).toContain(
+      'items: ({ first: string; } & Record<string, any> | { second: number; } & Record<string, any>)[];',
+    );
+  });
+
   it('allows dynamic properties at deeply nested assignment paths', () => {
     // Arrange
     const code = createVirtualCode(
