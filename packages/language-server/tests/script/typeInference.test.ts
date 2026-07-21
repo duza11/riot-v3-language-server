@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getScriptIdentifierType } from '../helpers/typescript';
+import {
+  getScriptIdentifierType,
+  getTemplateIdentifierType,
+} from '../helpers/typescript';
 import { createVirtualCode } from '../helpers/virtualCode';
 
 describe('script type inference', () => {
@@ -83,5 +86,81 @@ describe('script type inference', () => {
 
     // Assert
     expect(type).toBe('string | null');
+  });
+
+  it('resolves unions from repeated nested property assignments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ parentObj.childObj }</p>
+    <script>
+      const self = this
+      self.parentObj = { childObj: null }
+      self.parentObj.childObj = 'value'
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.parentObj.childObj',
+      'childObj',
+    );
+
+    // Assert
+    expect(type).toBe('string | null');
+  });
+
+  it('preserves an existing nested JSDoc property type', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ parentObj.childObj }</p>
+    <script>
+      const self = this
+      self.parentObj = {
+        /** @type {string} */
+        childObj: 'value'
+      }
+      self.parentObj.childObj = 1
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.parentObj.childObj',
+      'childObj',
+    );
+
+    // Assert
+    expect(type).toBe('string');
+  });
+
+  it('prioritizes a later nested JSDoc property type', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ parentObj.childObj }</p>
+    <script>
+      const self = this
+      self.parentObj = { childObj: null }
+      /** @type {string} */
+      self.parentObj.childObj = 'value'
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.parentObj.childObj',
+      'childObj',
+    );
+
+    // Assert
+    expect(type).toBe('string');
   });
 });

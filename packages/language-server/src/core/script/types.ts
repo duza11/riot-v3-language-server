@@ -6,12 +6,14 @@ export interface ScriptPropertyAssignment {
   typeName: string;
   typeOrigin: ScriptProperty['typeOrigin'];
   isAssignment: boolean;
+  explicitTypePaths?: string[][];
   hasExplicitFirstParameterType?: boolean;
 }
 
 export interface AssignedPropertyType {
   typeName: string;
   typeOrigin: ScriptProperty['typeOrigin'];
+  explicitTypePaths?: string[][];
   hasExplicitFirstParameterType?: boolean;
 }
 

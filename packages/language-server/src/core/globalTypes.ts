@@ -1,6 +1,12 @@
 import type { RiotV3LanguageOptions } from './options';
 import { scanBalanced } from './scanners';
 import type { EachScope, TemplateEventBinding } from './template';
+import {
+  formatObjectType,
+  formatUnionType,
+  parseObjectType,
+  splitTopLevelUnionTypes,
+} from './typeSyntax';
 import type { GeneratedSegment, JSDocTypedef, ScriptProperty } from './types';
 
 const riotV3GlobalTypes = `
@@ -192,7 +198,7 @@ function getGeneratedPropertyTypeName(
   if (
     options.allowDynamicPropertiesFromAnyAssignments &&
     property.typeOrigin === 'inferred' &&
-    property.hasInferredAnyAssignment
+    property.inferredAnyAssignmentPaths?.length
   ) {
     return getDynamicObjectPropertyType(property) ?? property.typeName;
   }
@@ -326,23 +332,90 @@ function parseEventCollectionPath(expression: string): string[] | undefined {
 function getDynamicObjectPropertyType(
   property: ScriptProperty,
 ): string | undefined {
-  const members = property.unionTypeNames ?? [property.typeName];
+  const dynamicPaths = property.inferredAnyAssignmentPaths?.filter(
+    (path) =>
+      !property.explicitTypePaths?.some((explicitPath) =>
+        pathStartsWith(path, explicitPath),
+      ),
+  );
+  if (!dynamicPaths?.length) {
+    return;
+  }
+  const nestedPaths = dynamicPaths.filter((path) => path.length > 0);
+  let typeName = applyDynamicObjectPaths(property.typeName, nestedPaths);
+  if (dynamicPaths.some((path) => path.length === 0)) {
+    typeName = getDynamicObjectTypeName(typeName) ?? typeName;
+  }
+  return typeName;
+}
+
+function applyDynamicObjectPaths(typeName: string, paths: string[][]): string {
+  if (!paths.length) {
+    return typeName;
+  }
+  const members = splitTopLevelUnionTypes(typeName);
+  return formatUnionType(
+    members.map((member) => applyDynamicObjectPathsToMember(member, paths)),
+  );
+}
+
+function applyDynamicObjectPathsToMember(
+  typeName: string,
+  paths: string[][],
+): string {
+  const properties = parseObjectType(typeName);
+  if (!properties) {
+    return typeName;
+  }
+  return formatObjectType(
+    properties.map((property) => {
+      const propertyName = normalizeObjectTypePropertyName(property.name);
+      const matchingPaths = paths
+        .filter((path) => path[0] === propertyName)
+        .map((path) => path.slice(1));
+      if (!matchingPaths.length) {
+        return property;
+      }
+      const dynamicType = matchingPaths.some((path) => path.length === 0)
+        ? getDynamicObjectTypeName(property.typeName)
+        : undefined;
+      return {
+        ...property,
+        typeName:
+          dynamicType ??
+          applyDynamicObjectPaths(property.typeName, matchingPaths),
+      };
+    }),
+  );
+}
+
+function getDynamicObjectTypeName(typeName: string): string | undefined {
+  const members = splitTopLevelUnionTypes(typeName);
   if (
     !members.every(
-      (typeName) => isObjectLiteralType(typeName) || isNullishType(typeName),
+      (member) => isObjectLiteralType(member) || isNullishType(member),
     )
   ) {
     return;
   }
-  const dynamicMembers = members.map((typeName) =>
-    isObjectLiteralType(typeName)
-      ? `${typeName} & Record<string, any>`
-      : typeName,
+  const dynamicMembers = members.map((member) =>
+    isObjectLiteralType(member) ? `${member} & Record<string, any>` : member,
   );
   if (!members.some(isObjectLiteralType)) {
     dynamicMembers.push('Record<string, any>');
   }
-  return dynamicMembers.join(' | ');
+  return formatUnionType(dynamicMembers);
+}
+
+function pathStartsWith(path: string[], prefix: string[]): boolean {
+  return (
+    prefix.length <= path.length &&
+    prefix.every((part, index) => path[index] === part)
+  );
+}
+
+function normalizeObjectTypePropertyName(name: string): string {
+  return name[0] === "'" || name[0] === '"' ? name.slice(1, -1) : name;
 }
 
 function isObjectLiteralType(typeName: string): boolean {

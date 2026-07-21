@@ -5,6 +5,13 @@ import {
   scanComment,
   scanJavaScriptNonCode,
 } from '../scanners';
+import {
+  formatObjectType,
+  formatUnionType,
+  type ObjectTypeProperty,
+  parseObjectType,
+  splitTopLevelUnionTypes,
+} from '../typeSyntax';
 import type { ScriptProperty } from '../types';
 import {
   hasExplicitFirstFunctionParameterType,
@@ -53,9 +60,14 @@ export function inferAssignedPropertyTypeIfAssigned(
       ),
     };
   }
+  const typeName = inferExpressionType(text, cursor);
   return {
-    typeName: inferExpressionType(text, cursor),
+    typeName,
     typeOrigin: 'inferred',
+    explicitTypePaths:
+      text[cursor] === '{'
+        ? getObjectLiteralExplicitTypePaths(text, cursor)
+        : undefined,
   };
 }
 
@@ -71,11 +83,19 @@ export function createScriptPropertyFromAssignment(
       : assignment.typeName,
     assignmentKind: path.length ? 'augmentation' : 'replacement',
     typeOrigin: assignment.typeOrigin,
-    hasInferredAnyAssignment:
-      path.length === 0 &&
+    inferredAnyAssignmentPaths:
       assignment.isAssignment &&
       assignment.typeOrigin === 'inferred' &&
-      assignment.typeName === 'any',
+      assignment.typeName === 'any'
+        ? [path]
+        : undefined,
+    explicitTypePaths:
+      assignment.typeOrigin === 'explicit'
+        ? [path]
+        : assignment.explicitTypePaths?.map((explicitPath) => [
+            ...path,
+            ...explicitPath,
+          ]),
     hasExplicitFirstParameterType: assignment.hasExplicitFirstParameterType,
   };
 }
@@ -101,24 +121,36 @@ export function mergeScriptProperty(
   if (next.typeOrigin === 'explicit' && next.assignmentKind === 'replacement') {
     return next;
   }
-  const hasInferredAnyAssignment =
-    existing.hasInferredAnyAssignment || next.hasInferredAnyAssignment;
+  const inferredAnyAssignmentPaths = mergePropertyPaths(
+    existing.inferredAnyAssignmentPaths,
+    next.inferredAnyAssignmentPaths,
+  );
+  const explicitTypePaths = mergePropertyPaths(
+    existing.explicitTypePaths,
+    next.explicitTypePaths,
+  );
   if (existing.typeName === 'any') {
-    return { ...next, hasInferredAnyAssignment };
+    return { ...next, inferredAnyAssignmentPaths, explicitTypePaths };
   }
   if (next.typeName === 'any' || existing.typeName === next.typeName) {
-    return { ...existing, hasInferredAnyAssignment };
+    return { ...existing, inferredAnyAssignmentPaths, explicitTypePaths };
   }
   if (next.assignmentKind === 'augmentation') {
-    const typeName = mergePropertyTypes(existing.typeName, next.typeName);
+    const typeName = mergePropertyTypes(
+      existing.typeName,
+      next.typeName,
+      existing.explicitTypePaths,
+      next.explicitTypePaths,
+    );
     return typeName !== undefined
       ? {
           ...existing,
           typeName,
-          hasInferredAnyAssignment,
+          inferredAnyAssignmentPaths,
+          explicitTypePaths,
           unionTypeNames: undefined,
         }
-      : { ...existing, hasInferredAnyAssignment };
+      : { ...existing, inferredAnyAssignmentPaths, explicitTypePaths };
   }
   const unionTypeNames = [
     ...(existing.unionTypeNames ?? [existing.typeName]),
@@ -127,22 +159,37 @@ export function mergeScriptProperty(
   return {
     ...existing,
     typeName: formatUnionType(unionTypeNames),
-    hasInferredAnyAssignment,
+    inferredAnyAssignmentPaths,
+    explicitTypePaths,
     unionTypeNames,
   };
 }
 
-function formatUnionType(typeNames: string[]): string {
-  return typeNames.map(parenthesizeUnionMember).join(' | ');
+function mergePropertyPaths(
+  currentPaths: string[][] | undefined,
+  nextPaths: string[][] | undefined,
+): string[][] | undefined {
+  const paths = [...(currentPaths ?? []), ...(nextPaths ?? [])];
+  const uniquePaths = paths.filter(
+    (path, index) =>
+      paths.findIndex((candidate) => pathsEqual(candidate, path)) === index,
+  );
+  return uniquePaths.length ? uniquePaths : undefined;
 }
 
-function parenthesizeUnionMember(typeName: string): string {
-  return typeName.includes('=>') ? `(${typeName})` : typeName;
+function pathsEqual(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((part, index) => part === right[index])
+  );
 }
 
 function mergePropertyTypes(
   currentType: string,
   nextType: string,
+  currentExplicitPaths: string[][] | undefined = undefined,
+  nextExplicitPaths: string[][] | undefined = undefined,
+  path: string[] = [],
 ): string | undefined {
   const currentObject = parseObjectType(currentType);
   const nextObject = parseObjectType(nextType);
@@ -159,74 +206,72 @@ function mergePropertyTypes(
       properties.set(property.name, property);
       continue;
     }
-    const typeName =
-      mergePropertyTypes(existing.typeName, property.typeName) ??
-      (existing.typeName === 'any' && property.typeName !== 'any'
-        ? property.typeName
-        : existing.typeName);
+    const propertyPath = [
+      ...path,
+      getObjectLiteralPropertyPathName(property.name),
+    ];
+    const typeName = mergeNestedPropertyTypes(
+      existing.typeName,
+      property.typeName,
+      currentExplicitPaths,
+      nextExplicitPaths,
+      propertyPath,
+    );
     properties.set(property.name, { ...existing, typeName });
   }
   return formatObjectType([...properties.values()]);
 }
 
-interface ObjectTypeProperty {
-  name: string;
-  typeName: string;
+function mergeNestedPropertyTypes(
+  currentType: string,
+  nextType: string,
+  currentExplicitPaths: string[][] | undefined,
+  nextExplicitPaths: string[][] | undefined,
+  path: string[],
+): string {
+  if (isExplicitTypePath(currentExplicitPaths, path)) {
+    return currentType;
+  }
+  if (isExplicitTypePath(nextExplicitPaths, path)) {
+    return nextType;
+  }
+  const mergedObject = mergePropertyTypes(
+    currentType,
+    nextType,
+    currentExplicitPaths,
+    nextExplicitPaths,
+    path,
+  );
+  if (mergedObject !== undefined) {
+    return mergedObject;
+  }
+  if (currentType === 'any' && nextType !== 'any') {
+    return nextType;
+  }
+  if (nextType === 'any' || currentType === nextType) {
+    return currentType;
+  }
+  return formatUnionType(
+    [
+      ...splitTopLevelUnionTypes(currentType),
+      ...splitTopLevelUnionTypes(nextType),
+    ].filter(
+      (typeName, index, typeNames) => typeNames.indexOf(typeName) === index,
+    ),
+  );
 }
 
-function parseObjectType(typeName: string): ObjectTypeProperty[] | undefined {
-  const trimmed = typeName.trim();
-  if (
-    !trimmed.startsWith('{') ||
-    scanBalanced(trimmed, 0, '{', '}') !== trimmed.length
-  ) {
-    return;
-  }
-  const body = trimmed.slice(1, -1).trim();
-  if (!body) {
-    return [];
-  }
-  const properties: ObjectTypeProperty[] = [];
-  for (const member of splitTopLevelTypeMembers(body)) {
-    const colon = findTopLevelPropertyColon(member);
-    if (colon === undefined) {
-      return;
-    }
-    const name = member.slice(0, colon).trim();
-    const memberType = member.slice(colon + 1).trim();
-    if (!name || !memberType) {
-      return;
-    }
-    properties.push({ name, typeName: memberType });
-  }
-  return properties;
-}
-
-function splitTopLevelTypeMembers(text: string): string[] {
-  const members: string[] = [];
-  let memberStart = 0;
-  let braceDepth = 0;
-  for (let offset = 0; offset <= text.length; offset++) {
-    const char = text[offset];
-    if (char === '{') {
-      braceDepth++;
-    } else if (char === '}') {
-      braceDepth--;
-    } else if ((char === ';' || offset === text.length) && braceDepth === 0) {
-      const member = text.slice(memberStart, offset).trim();
-      if (member) {
-        members.push(member);
-      }
-      memberStart = offset + 1;
-    }
-  }
-  return members;
-}
-
-function formatObjectType(properties: ObjectTypeProperty[]): string {
-  return `{ ${properties
-    .map((property) => `${property.name}: ${property.typeName};`)
-    .join(' ')} }`;
+function isExplicitTypePath(
+  explicitPaths: string[][] | undefined,
+  path: string[],
+): boolean {
+  return Boolean(
+    explicitPaths?.some(
+      (explicitPath) =>
+        explicitPath.length <= path.length &&
+        explicitPath.every((part, index) => path[index] === part),
+    ),
+  );
 }
 
 function inferExpressionType(text: string, start: number): string {
@@ -347,6 +392,44 @@ function inferObjectLiteralType(text: string, start: number): string {
         `${property.name}: ${property.typeName ?? inferExpressionType(property.value, 0)};`,
     )
     .join(' ')} }`;
+}
+
+function getObjectLiteralExplicitTypePaths(
+  text: string,
+  start: number,
+): string[][] | undefined {
+  const end = scanBalanced(text, start, '{', '}');
+  if (end === undefined) {
+    return;
+  }
+  const paths: string[][] = [];
+  for (const member of splitTopLevelCommaSeparated(
+    text.slice(start + 1, end - 1),
+  )) {
+    const property = parseObjectLiteralProperty(member);
+    if (!property) {
+      continue;
+    }
+    const name = getObjectLiteralPropertyPathName(property.name);
+    if (property.typeName) {
+      paths.push([name]);
+      continue;
+    }
+    const value = property.value.trim();
+    if (value[0] !== '{') {
+      continue;
+    }
+    for (const path of getObjectLiteralExplicitTypePaths(value, 0) ?? []) {
+      paths.push([name, ...path]);
+    }
+  }
+  return paths.length ? paths : undefined;
+}
+
+function getObjectLiteralPropertyPathName(typeName: string): string {
+  return typeName[0] === "'" || typeName[0] === '"'
+    ? typeName.slice(1, -1)
+    : typeName;
 }
 
 function splitTopLevelCommaSeparated(text: string): string[] {
