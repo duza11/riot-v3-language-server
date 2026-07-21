@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getScriptIdentifierType } from '../helpers/typescript';
+import {
+  getScriptIdentifierType,
+  getTemplateIdentifierType,
+} from '../helpers/typescript';
 import { createVirtualCode } from '../helpers/virtualCode';
 
 describe('script type inference', () => {
@@ -80,6 +83,30 @@ describe('script type inference', () => {
 
     // Act
     const type = getScriptIdentifierType(code, 'self.message)', 'message');
+
+    // Assert
+    expect(type).toBe('string | null');
+  });
+
+  it('resolves unions from repeated nested property assignments', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <demo-widget>
+    <p>{ parentObj.childObj }</p>
+    <script>
+      const self = this
+      self.parentObj = { childObj: null }
+      self.parentObj.childObj = 'value'
+    </script>
+  </demo-widget>
+  `);
+
+    // Act
+    const type = getTemplateIdentifierType(
+      code,
+      'this.parentObj.childObj',
+      'childObj',
+    );
 
     // Assert
     expect(type).toBe('string | null');

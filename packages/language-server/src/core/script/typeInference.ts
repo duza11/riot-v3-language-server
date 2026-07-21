@@ -159,14 +159,79 @@ function mergePropertyTypes(
       properties.set(property.name, property);
       continue;
     }
-    const typeName =
-      mergePropertyTypes(existing.typeName, property.typeName) ??
-      (existing.typeName === 'any' && property.typeName !== 'any'
-        ? property.typeName
-        : existing.typeName);
+    const typeName = mergeNestedPropertyTypes(
+      existing.typeName,
+      property.typeName,
+    );
     properties.set(property.name, { ...existing, typeName });
   }
   return formatObjectType([...properties.values()]);
+}
+
+function mergeNestedPropertyTypes(
+  currentType: string,
+  nextType: string,
+): string {
+  const mergedObject = mergePropertyTypes(currentType, nextType);
+  if (mergedObject !== undefined) {
+    return mergedObject;
+  }
+  if (currentType === 'any' && nextType !== 'any') {
+    return nextType;
+  }
+  if (nextType === 'any' || currentType === nextType) {
+    return currentType;
+  }
+  return formatUnionType(
+    [
+      ...splitTopLevelUnionTypes(currentType),
+      ...splitTopLevelUnionTypes(nextType),
+    ].filter(
+      (typeName, index, typeNames) => typeNames.indexOf(typeName) === index,
+    ),
+  );
+}
+
+function splitTopLevelUnionTypes(typeName: string): string[] {
+  const members: string[] = [];
+  let memberStart = 0;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let braceDepth = 0;
+  let angleDepth = 0;
+  for (let offset = 0; offset <= typeName.length; offset++) {
+    const char = typeName[offset];
+    if (char === '(') {
+      parenDepth++;
+    } else if (char === ')') {
+      parenDepth--;
+    } else if (char === '[') {
+      bracketDepth++;
+    } else if (char === ']') {
+      bracketDepth--;
+    } else if (char === '{') {
+      braceDepth++;
+    } else if (char === '}') {
+      braceDepth--;
+    } else if (char === '<') {
+      angleDepth++;
+    } else if (char === '>') {
+      angleDepth--;
+    } else if (
+      (char === '|' || offset === typeName.length) &&
+      parenDepth === 0 &&
+      bracketDepth === 0 &&
+      braceDepth === 0 &&
+      angleDepth === 0
+    ) {
+      const member = typeName.slice(memberStart, offset).trim();
+      if (member) {
+        members.push(member);
+      }
+      memberStart = offset + 1;
+    }
+  }
+  return members;
 }
 
 interface ObjectTypeProperty {
