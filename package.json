@@ -18,7 +18,7 @@
     "release": "pnpm --filter riot-v3-language-features run release"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.4",
     "@types/node": "latest",
     "typescript": "latest",
     "vitest": "^4.1.10"
