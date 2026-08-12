@@ -12,6 +12,7 @@ export interface NavigationOccurrence {
   start: number;
   end: number;
   role: NavigationOccurrenceRole;
+  isDefinition?: boolean;
   renameable?: boolean;
 }
 
@@ -19,6 +20,7 @@ export interface NestedPropertyOccurrence extends NavigationOccurrence {
   path: string[];
   symbolKey?: string;
   candidateKeys?: string[];
+  inferredDefinitionPriority?: number;
 }
 
 export interface IdentifierRange {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getRiotV3ReferenceOccurrences,
   getRiotV3ReferenceRanges,
   getRiotV3RenameEdits,
 } from '../../src/languagePlugin';
@@ -355,6 +356,180 @@ describe('nested property navigation', () => {
 
     // Assert
     expect(edits).toEqual([]);
+  });
+
+  it('renames nested properties introduced by static assignments', () => {
+    // Arrange
+    const source = `
+  <test-widget>
+    <p>{ obj.property }</p>
+    <script>
+      const self = this
+      self.obj = {}
+      self.obj.property = self.opts.property
+
+      fn() {
+        self.obj.property = 1
+      }
+    </script>
+  </test-widget>
+  `;
+    const position = offsetOf(source, '{ obj.property }', 'property');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'value');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, 'self.obj.property = self.opts.property', 'property'),
+      offsetOf(source, 'self.obj.property = 1', 'property'),
+      position,
+    ]);
+  });
+
+  it('uses a component initialization assignment as the inferred definition', () => {
+    // Arrange
+    const source = `
+  <test-widget>
+    <p>{ obj.property }</p>
+    <script>
+      const self = this
+      self.obj = {}
+      if (opts.flag) {
+        self.obj.property = 2
+      } else {
+        self.obj.property = 3
+      }
+
+      handleA() {
+        self.obj.property = 1
+      }
+    </script>
+  </test-widget>
+  `;
+    const position = offsetOf(source, '{ obj.property }', 'property');
+
+    // Act
+    const occurrences = getRiotV3ReferenceOccurrences(source, position);
+
+    // Assert
+    expect(
+      occurrences
+        .filter((occurrence) => occurrence.isDefinition)
+        .map((occurrence) => occurrence.start),
+    ).toEqual([offsetOf(source, 'self.obj.property = 2', 'property')]);
+  });
+
+  it('uses the first method assignment when no initialization assignment exists', () => {
+    // Arrange
+    const source = `
+  <test-widget>
+    <p>{ obj.property }</p>
+    <script>
+      const self = this
+      self.obj = {}
+
+      handleA() {
+        self.obj.property = 1
+      }
+
+      handleB() {
+        self.obj.property = 2
+      }
+    </script>
+  </test-widget>
+  `;
+    const position = offsetOf(source, '{ obj.property }', 'property');
+
+    // Act
+    const occurrences = getRiotV3ReferenceOccurrences(source, position);
+
+    // Assert
+    expect(
+      occurrences
+        .filter((occurrence) => occurrence.isDefinition)
+        .map((occurrence) => occurrence.start),
+    ).toEqual([offsetOf(source, 'self.obj.property = 1', 'property')]);
+  });
+
+  it('prefers explicit object declarations over inferred definitions', () => {
+    // Arrange
+    const source = `
+  <test-widget>
+    <p>{ obj.property }</p>
+    <script>
+      const self = this
+      self.obj = { property: 0 }
+      self.obj.property = 1
+    </script>
+  </test-widget>
+  `;
+    const position = offsetOf(source, '{ obj.property }', 'property');
+
+    // Act
+    const occurrences = getRiotV3ReferenceOccurrences(source, position);
+
+    // Assert
+    expect(
+      occurrences
+        .filter(
+          (occurrence) =>
+            occurrence.role === 'declaration' || occurrence.isDefinition,
+        )
+        .map((occurrence) => occurrence.start),
+    ).toEqual([offsetOf(source, 'property: 0', 'property')]);
+  });
+
+  it('renames deeply nested properties introduced with static bracket assignments', () => {
+    // Arrange
+    const source = `
+  <test-widget>
+    <p>{ state.child.property }</p>
+    <script>
+      const self = this
+      self.state = { child: {} }
+      self.state['child'].property = 1
+    </script>
+  </test-widget>
+  `;
+    const position = offsetOf(source, '{ state.child.property }', 'property');
+
+    // Act
+    const edits = getRiotV3RenameEdits(source, position, 'value');
+
+    // Assert
+    expect(startsOf(edits)).toEqual([
+      offsetOf(source, "self.state['child'].property", 'property'),
+      position,
+    ]);
+  });
+
+  it.each([
+    'self.obj.count += 1',
+    'self.obj.count ??= 1',
+    'self.obj.count++',
+    '++self.obj.count',
+  ])('classifies nested property mutation as a write: %s', (mutation) => {
+    // Arrange
+    const source = `
+  <test-widget>
+    <p>{ obj.count }</p>
+    <script>
+      const self = this
+      self.obj = { count: 0 }
+      ${mutation}
+    </script>
+  </test-widget>
+  `;
+    const position = offsetOf(source, mutation, 'count');
+
+    // Act
+    const occurrences = getRiotV3ReferenceOccurrences(source, position);
+
+    // Assert
+    expect(
+      occurrences.find((occurrence) => occurrence.start === position)?.role,
+    ).toBe('write');
   });
 
   it('does not rename nested properties in another component', () => {

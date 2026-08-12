@@ -5,6 +5,7 @@ export {
   getScriptThisAliases,
   scanInstancePropertyOccurrences,
   scanRiotV3MethodProperties,
+  scanRiotV3Methods,
 } from './analysis';
 export { getScriptEventHandlerScopes } from './eventHandlers';
 export {

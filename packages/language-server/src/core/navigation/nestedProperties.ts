@@ -4,6 +4,7 @@ import {
   findPrecedingJSDoc,
   parseJSDocType,
   type ScriptJSDocTypedBinding,
+  scanRiotV3Methods,
 } from '../script';
 import {
   type EachScope,
@@ -20,6 +21,18 @@ interface ResolvedPath {
   path: string[];
   segments: NestedPropertyOccurrence[];
 }
+
+interface InferredDefinitionCandidate {
+  occurrence: NestedPropertyOccurrence;
+  priority: number;
+}
+
+const inferredDefinitionPriorities = {
+  nestedExecution: 1,
+  riotMethod: 2,
+  componentConditional: 3,
+  componentUnconditional: 4,
+} as const;
 
 function getOccurrencePriority(occurrence: NestedPropertyOccurrence): number {
   if (occurrence.role === 'declaration') {
@@ -80,7 +93,7 @@ export function getNestedPropertyOccurrences(
     typedefNavigation.symbols,
   );
 
-  return [
+  return selectNestedPropertyDefinitions([
     ...typedefNavigation.declarations,
     ...inlineTypeDeclarations,
     ...scriptOccurrences.filter(
@@ -91,7 +104,51 @@ export function getNestedPropertyOccurrences(
     ),
     ...templateOccurrences,
     ...eventItemOccurrences,
-  ];
+  ]);
+}
+
+function selectNestedPropertyDefinitions(
+  occurrences: NestedPropertyOccurrence[],
+): NestedPropertyOccurrence[] {
+  const explicitDefinitionKeys = new Set(
+    occurrences
+      .filter((occurrence) => occurrence.role === 'declaration')
+      .flatMap(getNestedOccurrenceCandidateKeys),
+  );
+  const inferredDefinitions = new Map<string, InferredDefinitionCandidate>();
+
+  for (const occurrence of occurrences) {
+    if (occurrence.inferredDefinitionPriority === undefined) {
+      continue;
+    }
+    for (const key of getNestedOccurrenceCandidateKeys(occurrence)) {
+      if (explicitDefinitionKeys.has(key)) {
+        continue;
+      }
+      const current = inferredDefinitions.get(key);
+      if (
+        !current ||
+        occurrence.inferredDefinitionPriority > current.priority ||
+        (occurrence.inferredDefinitionPriority === current.priority &&
+          occurrence.start < current.occurrence.start)
+      ) {
+        inferredDefinitions.set(key, {
+          occurrence,
+          priority: occurrence.inferredDefinitionPriority,
+        });
+      }
+    }
+  }
+
+  const selected = new Set(
+    [...inferredDefinitions.values()].map(({ occurrence }) => occurrence),
+  );
+  return occurrences.map((occurrence) => {
+    const { inferredDefinitionPriority: _, ...result } = occurrence;
+    return selected.has(occurrence)
+      ? { ...result, isDefinition: true }
+      : result;
+  });
 }
 
 const eventEachLocalSymbolPrefix = 'event-each-local:';
@@ -518,6 +575,10 @@ function getScriptOccurrences(
     true,
     ts.ScriptKind.JS,
   );
+  const methodRanges = scanRiotV3Methods(text).map((method) => ({
+    start: method.bodyStart,
+    end: method.bodyEnd,
+  }));
   const occurrences = new Map<string, NestedPropertyOccurrence>();
 
   const add = (occurrence: NestedPropertyOccurrence): void => {
@@ -611,11 +672,16 @@ function getScriptOccurrences(
   const addResolvedPath = (
     resolved: ResolvedPath,
     declarationEnd?: number,
+    inferredDefinitionPriority?: number,
   ): void => {
     for (const segment of resolved.segments) {
       add({
         ...segment,
         role: segment.end === declarationEnd ? 'write' : segment.role,
+        inferredDefinitionPriority:
+          segment.end === declarationEnd
+            ? inferredDefinitionPriority
+            : undefined,
       });
     }
   };
@@ -711,14 +777,28 @@ function getScriptOccurrences(
       if (resolved) {
         addBindingDeclarations(node.name, resolved.path);
       }
-    } else if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken
-    ) {
+    } else if (ts.isBinaryExpression(node) && isAssignmentExpression(node)) {
       const resolved = resolvePath(node.left);
       if (resolved) {
+        addResolvedPath(
+          resolved,
+          resolved.segments.at(-1)?.end,
+          node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+            ? getStaticAssignmentDefinitionPriority(
+                node,
+                sourceFile,
+                methodRanges,
+              )
+            : undefined,
+        );
+        if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          addObjectDeclarations(node.right, resolved.path);
+        }
+      }
+    } else if (isUpdateExpression(node)) {
+      const resolved = resolvePath(node.operand);
+      if (resolved) {
         addResolvedPath(resolved, resolved.segments.at(-1)?.end);
-        addObjectDeclarations(node.right, resolved.path);
       }
     } else if (
       ts.isPropertyAccessExpression(node) ||
@@ -734,6 +814,72 @@ function getScriptOccurrences(
 
   visit(sourceFile);
   return [...occurrences.values()];
+}
+
+function isAssignmentExpression(node: ts.BinaryExpression): boolean {
+  return (
+    node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+    node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+  );
+}
+
+function isUpdateExpression(
+  node: ts.Node,
+): node is ts.PostfixUnaryExpression | ts.PrefixUnaryExpression {
+  return (
+    (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) &&
+    (node.operator === ts.SyntaxKind.PlusPlusToken ||
+      node.operator === ts.SyntaxKind.MinusMinusToken)
+  );
+}
+
+function getStaticAssignmentDefinitionPriority(
+  node: ts.BinaryExpression,
+  sourceFile: ts.SourceFile,
+  methodRanges: { start: number; end: number }[],
+): number {
+  const offset = node.getStart(sourceFile);
+  const isInRiotMethod = methodRanges.some(
+    (range) => offset >= range.start && offset < range.end,
+  );
+  let isInFunction = false;
+  let isConditional = false;
+  for (
+    let current: ts.Node | undefined = node.parent;
+    current;
+    current = current.parent
+  ) {
+    if (ts.isFunctionLike(current)) {
+      isInFunction = true;
+    } else if (isConditionalExecutionNode(current)) {
+      isConditional = true;
+    }
+  }
+  if (!isInRiotMethod && !isInFunction) {
+    return isConditional
+      ? inferredDefinitionPriorities.componentConditional
+      : inferredDefinitionPriorities.componentUnconditional;
+  }
+  return isConditional || isInFunction
+    ? inferredDefinitionPriorities.nestedExecution
+    : inferredDefinitionPriorities.riotMethod;
+}
+
+function isConditionalExecutionNode(node: ts.Node): boolean {
+  return (
+    ts.isIfStatement(node) ||
+    ts.isConditionalExpression(node) ||
+    ts.isSwitchStatement(node) ||
+    ts.isCaseClause(node) ||
+    ts.isDefaultClause(node) ||
+    ts.isForStatement(node) ||
+    ts.isForInStatement(node) ||
+    ts.isForOfStatement(node) ||
+    ts.isWhileStatement(node) ||
+    ts.isDoStatement(node) ||
+    ts.isTryStatement(node) ||
+    ts.isCatchClause(node)
+  );
 }
 
 function getTemplateOccurrences(

@@ -220,7 +220,7 @@ export function scanRiotV3MethodProperties(
   return properties;
 }
 
-function scanRiotV3Methods(text: string): RiotV3MethodDefinition[] {
+export function scanRiotV3Methods(text: string): RiotV3MethodDefinition[] {
   const methods: RiotV3MethodDefinition[] = [];
   let offset = 0;
   let parenDepth = 0;

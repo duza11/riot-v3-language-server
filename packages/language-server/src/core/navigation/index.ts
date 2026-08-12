@@ -220,7 +220,12 @@ function getNestedPropertyReferenceOccurrences(
       targetKeys.has(key),
     ),
   );
-  if (!matching.some((occurrence) => occurrence.role === 'declaration')) {
+  if (
+    !matching.some(
+      (occurrence) =>
+        occurrence.role === 'declaration' || occurrence.isDefinition,
+    )
+  ) {
     return;
   }
   return matching;
