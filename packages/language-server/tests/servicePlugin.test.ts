@@ -5,7 +5,7 @@ import { filterReferenceOccurrences } from '../src/server/servicePlugin';
 const occurrences: NavigationOccurrence[] = [
   { start: 10, end: 17, role: 'read' },
   { start: 20, end: 27, role: 'declaration' },
-  { start: 30, end: 37, role: 'write' },
+  { start: 30, end: 37, role: 'write', isDefinition: true },
 ];
 
 describe('reference occurrence filtering', () => {
@@ -35,5 +35,24 @@ describe('reference occurrence filtering', () => {
 
     // Assert
     expect(filtered).toEqual(occurrences);
+  });
+
+  it('keeps inferred definitions when declarations are excluded', () => {
+    // Arrange
+    const includeDeclaration = false;
+
+    // Act
+    const filtered = filterReferenceOccurrences(
+      occurrences,
+      includeDeclaration,
+    );
+
+    // Assert
+    expect(filtered).toContainEqual({
+      start: 30,
+      end: 37,
+      role: 'write',
+      isDefinition: true,
+    });
   });
 });

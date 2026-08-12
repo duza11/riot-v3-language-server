@@ -44,7 +44,8 @@ export function createRiotV3ServicePlugin(): LanguageServicePlugin {
             resolved.sourceOffset,
           );
           const definitions = occurrences.filter(
-            (occurrence) => occurrence.role === 'declaration',
+            (occurrence) =>
+              occurrence.role === 'declaration' || occurrence.isDefinition,
           );
           const targets = definitions.length
             ? definitions
