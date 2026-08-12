@@ -6,7 +6,11 @@
 
   outputs =
     { nixpkgs, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (
+    flake-utils.lib.eachSystem [
+      "x86_64-linux"
+      "aarch64-linux"
+      "aarch64-darwin"
+    ] (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -62,9 +66,9 @@
         };
 
         devShells.default = pkgs.mkShell {
-          packages = [
-            pkgs.nodejs_26
-            pkgs.pnpm_11
+          packages = with pkgs; [
+            nodejs_26
+            pnpm_11
           ];
         };
       }
