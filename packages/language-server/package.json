@@ -48,7 +48,7 @@
     "@volar/language-core": "~2.4.28",
     "@volar/language-server": "~2.4.28",
     "@volar/typescript": "~2.4.28",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "volar-service-css": "^0.0.71",
     "volar-service-emmet": "^0.0.71",
     "volar-service-html": "^0.0.71",
