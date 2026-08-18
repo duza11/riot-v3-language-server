@@ -1,0 +1,108 @@
+name: Update Nix Dependencies
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+    paths:
+      - package.json
+      - pnpm-lock.yaml
+      - packages/*/package.json
+
+concurrency:
+  group: update-nix-dependencies-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Prepare Nix Dependency Update
+    if: >-
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+
+    steps:
+      - name: Validate changed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')"
+          unexpected="$(printf '%s\n' "$files" | grep -Ev '^(package\.json|pnpm-lock\.yaml|packages/[^/]+/package\.json|flake\.nix)$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected files in Dependabot PR:" >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+
+      - name: Checkout Dependabot branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: Update Nix dependency hash
+        run: nix develop -c pnpm run update:nix-deps
+
+      - name: Create patch
+        id: patch
+        run: |
+          git diff --binary -- flake.nix > nix-dependencies.patch
+          if [ -s nix-dependencies.patch ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload patch
+        if: steps.patch.outputs.changed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nix-dependencies-${{ github.event.pull_request.number }}
+          path: nix-dependencies.patch
+
+  commit:
+    name: Commit Nix Dependency Update
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Dependabot branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
+
+      - name: Download patch
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nix-dependencies-${{ github.event.pull_request.number }}
+
+      - name: Apply and commit patch
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git apply --check nix-dependencies.patch
+          git apply nix-dependencies.patch
+          if [ "$(git diff --name-only)" != "flake.nix" ]; then
+            echo "The patch changed files other than flake.nix." >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add flake.nix
+          git -c core.hooksPath=/dev/null commit -m "build: update Nix dependency hash"
+          git -c core.hooksPath=/dev/null push origin "HEAD:$HEAD_REF"

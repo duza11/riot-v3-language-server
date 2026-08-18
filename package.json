@@ -15,7 +15,8 @@
     "watch": "pnpm --parallel --filter @duza11/riot-v3-language-server --filter riot-v3-language-features watch",
     "pack": "pnpm --filter riot-v3-language-features run pack",
     "pack:labs": "pnpm --filter riot-v3-language-features run pack:labs",
-    "release": "pnpm --filter riot-v3-language-features run release"
+    "release": "pnpm --filter riot-v3-language-features run release",
+    "update:nix-deps": "node scripts/update-nix-pnpm-hash.js"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
