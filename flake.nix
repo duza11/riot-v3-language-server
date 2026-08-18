@@ -14,33 +14,54 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        buildNpmPackage = pkgs.buildNpmPackage.override {
-          nodejs = pkgs.nodejs_26;
+        nodejs = pkgs.nodejs_26;
+        pnpm = pkgs.pnpm_11.override {
+          nodejs-slim = pkgs."nodejs-slim_26";
         };
         runtimeNode = pkgs."nodejs-slim_26";
       in
       {
         packages = rec {
-          riot-v3-language-server = buildNpmPackage (finalAttrs: {
+          riot-v3-language-server = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "riot-v3-language-server";
             version = "0.0.1";
-            src = ./packages/language-server;
+            src = ./.;
 
-            npmDepsHash = "sha256-ee5Lh8U+XQrUSmN1Xzx3G/2ErTsuESwYPgcENj3i1KY=";
+            pnpmWorkspaces = [ "@duza11/riot-v3-language-server" ];
+            pnpmDeps = pkgs.fetchPnpmDeps {
+              inherit (finalAttrs)
+                pname
+                version
+                src
+                pnpmWorkspaces
+                ;
+              inherit pnpm;
+              fetcherVersion = 4;
+              hash = "sha256-xi275lyNAgOcT5JiypKN2KO/YsKZamD9Jdjy/8bF0WY=";
+            };
 
-            postPatch = ''
-              substituteInPlace tsconfig.json \
-                --replace-fail '"extends": "../../tsconfig.base.json",' ""
+            nativeBuildInputs = [
+              nodejs
+              pnpm
+              pkgs.pnpmConfigHook
+            ];
+
+            buildPhase = ''
+              runHook preBuild
+
+              pnpm --filter @duza11/riot-v3-language-server build
+
+              runHook postBuild
             '';
 
             installPhase = ''
               runHook preInstall
 
               mkdir -p "$out/lib/riot-v3-language-server" "$out/bin"
-              cp -R dist "$out/lib/riot-v3-language-server/dist"
+              cp -R packages/language-server/dist "$out/lib/riot-v3-language-server/dist"
               mkdir -p "$out/lib/riot-v3-language-server/node_modules"
-              cp -R node_modules/typescript "$out/lib/riot-v3-language-server/node_modules/typescript"
-              cp package.json "$out/lib/riot-v3-language-server/package.json"
+              cp -RL packages/language-server/node_modules/typescript "$out/lib/riot-v3-language-server/node_modules/typescript"
+              cp packages/language-server/package.json "$out/lib/riot-v3-language-server/package.json"
 
               cat > "$out/bin/riot-v3-language-server" <<EOF
               #!${pkgs.runtimeShell}
