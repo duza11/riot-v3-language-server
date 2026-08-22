@@ -87,7 +87,6 @@ export function getNestedPropertyOccurrences(
       ),
   );
   const eventItemOccurrences = getEventItemOccurrences(
-    snapshot,
     componentAnalysis,
     rootNames,
     typedefNavigation.symbols,
@@ -154,7 +153,7 @@ function selectNestedPropertyDefinitions(
 const eventEachLocalSymbolPrefix = 'event-each-local:';
 
 export function getEventEachLocalOccurrences(
-  snapshot: ts.IScriptSnapshot,
+  _snapshot: ts.IScriptSnapshot,
   componentAnalysis: RiotV3ComponentAnalysis,
   localSourceOffset: number,
 ): NestedPropertyOccurrence[] {
@@ -162,7 +161,6 @@ export function getEventEachLocalOccurrences(
     componentAnalysis.script.properties.map((property) => property.name),
   );
   return getEventItemOccurrences(
-    snapshot,
     componentAnalysis,
     rootNames,
     new Map(),
@@ -174,63 +172,43 @@ export function getEventEachLocalOccurrences(
 }
 
 function getEventItemOccurrences(
-  snapshot: ts.IScriptSnapshot,
   componentAnalysis: RiotV3ComponentAnalysis,
   rootNames: Set<string>,
   symbols: Map<string, string>,
 ): NestedPropertyOccurrence[] {
   const occurrences = new Map<string, NestedPropertyOccurrence>();
   const { script, template } = componentAnalysis;
-  for (const handlerScope of script.eventHandlerScopes) {
-    const bindings = template.eventBindings.filter(
-      (binding) => binding.handlerName === handlerScope.handlerName,
-    );
-    if (!bindings.length) {
+  for (const eventPath of script.eventItemAccesses) {
+    if (!eventPath.path.length) {
       continue;
     }
-    const text = snapshot.getText(handlerScope.bodyStart, handlerScope.bodyEnd);
-    const sourceFile = ts.createSourceFile(
-      'event-handler.js',
-      text,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.JS,
+    const bindings = template.eventBindings.filter(
+      (binding) => binding.handlerName === eventPath.handlerName,
     );
-    const visit = (node: ts.Node): void => {
-      if (ts.isPropertyAccessExpression(node)) {
-        const eventPath = getEventItemPropertyPath(
-          node,
-          handlerScope.parameterName,
-          sourceFile,
-          handlerScope.bodyStart,
+    for (const binding of bindings) {
+      const occurrence = resolveEventItemOccurrence(
+        {
+          names: eventPath.path,
+          terminal: eventPath.terminal,
+        },
+        binding.eachScopes.at(-1),
+        template,
+        rootNames,
+        symbols,
+      );
+      if (occurrence) {
+        addEventEachLocalNavigationOccurrences(
+          occurrence,
+          binding.eachScopes.at(-1),
+          template,
+          occurrences,
         );
-        if (eventPath) {
-          for (const binding of bindings) {
-            const occurrence = resolveEventItemOccurrence(
-              eventPath,
-              binding.eachScopes.at(-1),
-              template,
-              rootNames,
-              symbols,
-            );
-            if (occurrence) {
-              addEventEachLocalNavigationOccurrences(
-                occurrence,
-                binding.eachScopes.at(-1),
-                template,
-                occurrences,
-              );
-              occurrences.set(
-                `${occurrence.start}:${occurrence.end}:${occurrence.symbolKey ?? occurrence.path.join('.')}`,
-                occurrence,
-              );
-            }
-          }
-        }
+        occurrences.set(
+          `${occurrence.start}:${occurrence.end}:${occurrence.symbolKey ?? occurrence.path.join('.')}`,
+          occurrence,
+        );
       }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
+    }
   }
   return mergeEventItemCandidates([...occurrences.values()]);
 }
@@ -277,35 +255,6 @@ export function getNestedOccurrenceCandidateKeys(
 interface EventItemPropertyPath {
   names: string[];
   terminal: { start: number; end: number };
-}
-
-function getEventItemPropertyPath(
-  node: ts.PropertyAccessExpression,
-  parameterName: string,
-  sourceFile: ts.SourceFile,
-  sourceOffset: number,
-): EventItemPropertyPath | undefined {
-  const names: string[] = [];
-  let current: ts.Expression = node;
-  while (ts.isPropertyAccessExpression(current)) {
-    names.unshift(current.name.text);
-    current = current.expression;
-  }
-  if (
-    !ts.isIdentifier(current) ||
-    current.text !== parameterName ||
-    names[0] !== 'item' ||
-    names.length < 2
-  ) {
-    return;
-  }
-  return {
-    names: names.slice(1),
-    terminal: {
-      start: sourceOffset + node.name.getStart(sourceFile),
-      end: sourceOffset + node.name.getEnd(),
-    },
-  };
 }
 
 function resolveEventItemOccurrence(

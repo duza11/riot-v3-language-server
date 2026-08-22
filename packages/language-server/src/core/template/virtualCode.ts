@@ -32,6 +32,7 @@ export function createTemplateVirtualCode(
   expressions: TemplateExpression[],
   eachScopes: EachScope[],
   typeNames: TemplateTypeNames,
+  eventEachLocalReadOffsets: ReadonlySet<number> = new Set(),
 ): VirtualCode {
   const segments: GeneratedSegment[] = [
     { text: getTemplateContextPrefix(typeNames.templateContext) },
@@ -40,7 +41,11 @@ export function createTemplateVirtualCode(
     ...generateEachLocalBindingSegments(
       eachScopes,
       typeNames,
-      getUsedEachLocalDefinitionOffsets(expressions),
+      getEachLocalReadOffsets(
+        expressions,
+        eachScopes,
+        eventEachLocalReadOffsets,
+      ),
     ),
   );
   for (const expression of expressions) {
@@ -139,6 +144,25 @@ export function createTemplateVirtualCode(
     ],
     embeddedCodes: [],
   };
+}
+
+function getEachLocalReadOffsets(
+  expressions: TemplateExpression[],
+  eachScopes: EachScope[],
+  eventEachLocalReadOffsets: ReadonlySet<number>,
+): Set<number> {
+  const offsets = getUsedEachLocalDefinitionOffsets(expressions);
+  for (const sourceOffset of eventEachLocalReadOffsets) {
+    offsets.add(sourceOffset);
+  }
+  for (const scope of eachScopes) {
+    for (const localName of scope.localNames) {
+      if (localName.name.startsWith('_')) {
+        offsets.add(localName.sourceOffset);
+      }
+    }
+  }
+  return offsets;
 }
 
 function generateScopedExpressionSegments(

@@ -8,6 +8,7 @@ export {
   scanRiotV3Methods,
 } from './analysis';
 export { getScriptEventHandlerScopes } from './eventHandlers';
+export { getScriptEventItemAccesses } from './eventItems';
 export {
   findPrecedingJSDoc,
   getScriptJSDocTypedefs,
@@ -15,6 +16,7 @@ export {
 } from './jsdoc';
 export type {
   ScriptEventHandlerScope,
+  ScriptEventItemAccess,
   ScriptJSDocTypedBinding,
 } from './types';
 export { generateScriptVirtualText } from './virtualCode';
