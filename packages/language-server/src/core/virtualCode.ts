@@ -145,7 +145,12 @@ function* getRiotV3EmbeddedCodes(
 ): Generator<VirtualCode> {
   let styleIndex = 0;
   let scriptIndex = 0;
-  for (const { component, script, template } of componentAnalyses) {
+  for (const {
+    component,
+    script,
+    template,
+    eventEachLocalReadOffsets,
+  } of componentAnalyses) {
     const componentTypeNames = getComponentTypeNames(component.index);
     const componentTypeReferences = {
       componentState: getRiotV3ComponentTypeReference(
@@ -237,6 +242,7 @@ function* getRiotV3EmbeddedCodes(
         template.expressions,
         template.eachScopes,
         componentTypeReferences,
+        eventEachLocalReadOffsets,
       );
     }
   }

@@ -1,12 +1,15 @@
 import type * as ts from 'typescript';
 import * as html from 'vscode-html-languageservice';
 import { getRiotV3Components, getTemplateIgnoredRanges } from './components';
+import { getEventEachLocalReadOffsets } from './eventContext';
 import type {
   ScriptEventHandlerScope,
+  ScriptEventItemAccess,
   ScriptJSDocTypedBinding,
 } from './script';
 import {
   getScriptEventHandlerScopes,
+  getScriptEventItemAccesses,
   getScriptJSDocTypedBindings,
   getScriptJSDocTypedefs,
   getScriptProperties,
@@ -23,12 +26,14 @@ export interface RiotV3ScriptAnalysis {
   jsDocTypedefs: JSDocTypedef[];
   jsDocTypedBindings: ScriptJSDocTypedBinding[];
   eventHandlerScopes: ScriptEventHandlerScope[];
+  eventItemAccesses: ScriptEventItemAccess[];
 }
 
 export interface RiotV3ComponentAnalysis {
   component: RiotV3Component;
   script: RiotV3ScriptAnalysis;
   template: TemplateAnalysis;
+  eventEachLocalReadOffsets: Set<number>;
 }
 
 export interface RiotV3DocumentAnalysis {
@@ -50,30 +55,41 @@ export function analyzeRiotV3Document(
   const components = getRiotV3Components(sourceText, htmlDocument).map(
     (component): RiotV3ComponentAnalysis => {
       const aliases = getScriptThisAliases(snapshot, component.scripts);
+      const eventHandlerScopes = getScriptEventHandlerScopes(
+        snapshot,
+        component.scripts,
+        aliases,
+      );
+      const script = {
+        properties: getScriptProperties(snapshot, component.scripts),
+        aliases,
+        jsDocTypedefs: getScriptJSDocTypedefs(snapshot, component.scripts),
+        jsDocTypedBindings: getScriptJSDocTypedBindings(
+          snapshot,
+          component.scripts,
+        ),
+        eventHandlerScopes,
+        eventItemAccesses: getScriptEventItemAccesses(
+          snapshot,
+          eventHandlerScopes,
+        ),
+      };
+      const template = createTemplateAnalysis(
+        snapshot,
+        component.nodes,
+        getTemplateIgnoredRanges(component),
+        {
+          start: component.start,
+          end: component.end,
+        },
+      );
       return {
         component,
-        script: {
-          properties: getScriptProperties(snapshot, component.scripts),
-          aliases,
-          jsDocTypedefs: getScriptJSDocTypedefs(snapshot, component.scripts),
-          jsDocTypedBindings: getScriptJSDocTypedBindings(
-            snapshot,
-            component.scripts,
-          ),
-          eventHandlerScopes: getScriptEventHandlerScopes(
-            snapshot,
-            component.scripts,
-            aliases,
-          ),
-        },
-        template: createTemplateAnalysis(
-          snapshot,
-          component.nodes,
-          getTemplateIgnoredRanges(component),
-          {
-            start: component.start,
-            end: component.end,
-          },
+        script,
+        template,
+        eventEachLocalReadOffsets: getEventEachLocalReadOffsets(
+          script.eventItemAccesses,
+          template.eventBindings,
         ),
       };
     },

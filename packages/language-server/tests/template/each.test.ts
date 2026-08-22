@@ -338,6 +338,83 @@ describe('each template expressions', () => {
     ).toEqual([]);
   });
 
+  it('does not report an each index used through an event item', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <button each={ message, i in messages } onclick={ handleClick }>
+      { message }
+    </button>
+    <script>
+      this.messages = ['Hello', 'World']
+      handleClick(e) {
+        console.log(e.item.i)
+      }
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    });
+
+    // Assert
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.code === 6133),
+    ).toEqual([]);
+  });
+
+  it('keeps unrelated each locals unused when an event item uses another local', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <button each={ product, i in products } onclick={ handleClick }></button>
+    <script>
+      this.products = [{ name: 'Product' }]
+      handleClick(e) {
+        console.log(e.item.product.name)
+      }
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    }).filter((diagnostic) => diagnostic.code === 6133);
+
+    // Assert
+    expect(diagnostics.map((diagnostic) => diagnostic.messageText)).toEqual([
+      "'i' is declared but its value is never read.",
+    ]);
+  });
+
+  it('treats all each locals as used when the whole event item is read', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <button each={ message, i in messages } onclick={ handleClick }></button>
+    <script>
+      this.messages = ['Hello', 'World']
+      handleClick(e) {
+        consume(e.item)
+      }
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    });
+
+    // Assert
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.code === 6133),
+    ).toEqual([]);
+  });
+
   it('does not report bare each local references as unused', () => {
     // Arrange
     const code = createVirtualCode(`

@@ -33,3 +33,12 @@ export interface ScriptEventHandlerScope {
   bodyStart: number;
   bodyEnd: number;
 }
+
+export interface ScriptEventItemAccess {
+  handlerName: string;
+  path: string[];
+  terminal: {
+    start: number;
+    end: number;
+  };
+}
