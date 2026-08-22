@@ -316,6 +316,28 @@ describe('each template expressions', () => {
     ]);
   });
 
+  it('does not report underscore-prefixed each locals as unused', () => {
+    // Arrange
+    const code = createVirtualCode(`
+  <root>
+    <div each={ _message, _i in list }></div>
+    <script>
+      this.list = ['Hi!']
+    </script>
+  </root>
+  `);
+
+    // Act
+    const diagnostics = getTemplateSemanticDiagnostics([code], {
+      noUnusedLocals: true,
+    });
+
+    // Assert
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.code === 6133),
+    ).toEqual([]);
+  });
+
   it('does not report bare each local references as unused', () => {
     // Arrange
     const code = createVirtualCode(`

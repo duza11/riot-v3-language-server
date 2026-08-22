@@ -40,7 +40,7 @@ export function createTemplateVirtualCode(
     ...generateEachLocalBindingSegments(
       eachScopes,
       typeNames,
-      getUsedEachLocalDefinitionOffsets(expressions),
+      getEachLocalReadOffsets(expressions, eachScopes),
     ),
   );
   for (const expression of expressions) {
@@ -139,6 +139,21 @@ export function createTemplateVirtualCode(
     ],
     embeddedCodes: [],
   };
+}
+
+function getEachLocalReadOffsets(
+  expressions: TemplateExpression[],
+  eachScopes: EachScope[],
+): Set<number> {
+  const offsets = getUsedEachLocalDefinitionOffsets(expressions);
+  for (const scope of eachScopes) {
+    for (const localName of scope.localNames) {
+      if (localName.name.startsWith('_')) {
+        offsets.add(localName.sourceOffset);
+      }
+    }
+  }
+  return offsets;
 }
 
 function generateScopedExpressionSegments(
