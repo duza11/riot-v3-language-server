@@ -69,7 +69,7 @@
     "release": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build && vsce publish --pre-release --no-dependencies"
   },
   "devDependencies": {
-    "@types/vscode": "^1.125.0",
+    "@types/vscode": "^1.134.0",
     "@volar/language-server": "~2.4.28",
     "@volar/vscode": "~2.4.28",
     "@vscode/vsce": "^3.9.2",
