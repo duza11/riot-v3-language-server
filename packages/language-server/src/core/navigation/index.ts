@@ -23,6 +23,7 @@ import {
 } from './rootProperties';
 import type { NavigationContext, NavigationOccurrence } from './types';
 
+export { getRiotPropertyOccurrences } from './rootProperties';
 export type { NavigationOccurrence } from './types';
 
 export function getRiotV3RenameEdits(

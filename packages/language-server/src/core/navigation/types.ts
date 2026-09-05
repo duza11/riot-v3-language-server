@@ -6,7 +6,11 @@ import type {
 import type { TemplateAnalysis } from '../template';
 import type { RiotV3Component } from '../types';
 
-export type NavigationOccurrenceRole = 'declaration' | 'read' | 'write';
+export type NavigationOccurrenceRole =
+  | 'declaration'
+  | 'read'
+  | 'write'
+  | 'readWrite';
 
 export interface NavigationOccurrence {
   start: number;

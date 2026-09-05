@@ -18,7 +18,7 @@ export function getRiotV3DocumentContext(
   position: Position,
 ): RiotV3DocumentContext | undefined {
   const resolved = getRiotV3SourceDocument(context, document);
-  if (!resolved) {
+  if (!resolved || !isRootVirtualDocument(resolved)) {
     return;
   }
   let sourceOffset = document.offsetAt(position);
@@ -47,12 +47,21 @@ export function getRiotV3RootDocumentContext(
   | Pick<RiotV3DocumentContext, 'sourceDocument' | 'virtualCode'>
   | undefined {
   const resolved = getRiotV3SourceDocument(context, document);
-  return resolved
+  return resolved && isRootVirtualDocument(resolved)
     ? {
         sourceDocument: resolved.sourceDocument,
         virtualCode: resolved.virtualCode,
       }
     : undefined;
+}
+
+function isRootVirtualDocument(
+  resolved: NonNullable<ReturnType<typeof getRiotV3SourceDocument>>,
+): boolean {
+  return (
+    resolved.embeddedCode === undefined ||
+    resolved.embeddedCode === resolved.virtualCode
+  );
 }
 
 function getRiotV3SourceDocument(

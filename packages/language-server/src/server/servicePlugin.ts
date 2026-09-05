@@ -1,8 +1,15 @@
 import {
   type Diagnostic,
+  DiagnosticSeverity,
+  DiagnosticTag,
   DocumentHighlightKind,
   type LanguageServicePlugin,
+  type Position,
 } from '@volar/language-server/node';
+import {
+  getUnusedRiotV3ComponentMembers,
+  type UnusedRiotV3ComponentMember,
+} from '../core/diagnostics';
 import {
   getRiotV3ReferenceOccurrencesForAnalysis,
   getRiotV3RenameEditsForAnalysis,
@@ -163,7 +170,7 @@ export function createRiotV3ServicePlugin(): LanguageServicePlugin {
         },
         provideDiagnostics(document) {
           const resolved = getRiotV3RootDocumentContext(context, document);
-          if (!resolved || resolved.virtualCode.styleNodes.length <= 1) {
+          if (!resolved) {
             return;
           }
           const errors: Diagnostic[] = [];
@@ -183,11 +190,34 @@ export function createRiotV3ServicePlugin(): LanguageServicePlugin {
               message: 'Only one style tag is allowed.',
             });
           }
-          return errors;
+          errors.push(
+            ...createUnusedComponentMemberDiagnostics(
+              getUnusedRiotV3ComponentMembers(resolved.virtualCode.analysis),
+              (offset) => resolved.sourceDocument.positionAt(offset),
+            ),
+          );
+          return errors.length ? errors : undefined;
         },
       };
     },
   };
+}
+
+export function createUnusedComponentMemberDiagnostics(
+  members: UnusedRiotV3ComponentMember[],
+  positionAt: (offset: number) => Position,
+): Diagnostic[] {
+  return members.map((member) => ({
+    severity: DiagnosticSeverity.Hint,
+    range: {
+      start: positionAt(member.start),
+      end: positionAt(member.end),
+    },
+    code: 6133,
+    source: 'riot_v3',
+    tags: [DiagnosticTag.Unnecessary],
+    message: `'${member.name}' is declared but its value is never read.`,
+  }));
 }
 
 export function filterReferenceOccurrences(

@@ -220,27 +220,35 @@ function getInstancePropertyRole(
   while (cursor < text.length && /\s/.test(text[cursor])) {
     cursor++;
   }
-  return isAssignmentOperatorAt(text, cursor) ? 'write' : 'read';
+  if (isReadWriteOperatorAt(text, cursor)) {
+    return 'readWrite';
+  }
+  return isSimpleAssignmentAt(text, cursor) ? 'write' : 'read';
 }
 
-function isAssignmentOperatorAt(text: string, offset: number): boolean {
+function isReadWriteOperatorAt(text: string, offset: number): boolean {
   return [
-    '=',
+    '**=',
+    '&&=',
+    '||=',
+    '??=',
     '+=',
     '-=',
     '*=',
     '/=',
     '%=',
-    '**=',
-    '&&=',
-    '||=',
-    '??=',
     '&=',
     '|=',
     '^=',
     '++',
     '--',
   ].some((operator) => text.startsWith(operator, offset));
+}
+
+function isSimpleAssignmentAt(text: string, offset: number): boolean {
+  return (
+    text[offset] === '=' && text[offset + 1] !== '=' && text[offset + 1] !== '>'
+  );
 }
 
 function addOccurrence(
@@ -265,6 +273,9 @@ function addOccurrence(
 
 function getOccurrencePriority(role: NavigationOccurrence['role']): number {
   if (role === 'declaration') {
+    return 3;
+  }
+  if (role === 'readWrite') {
     return 2;
   }
   return role === 'write' ? 1 : 0;
