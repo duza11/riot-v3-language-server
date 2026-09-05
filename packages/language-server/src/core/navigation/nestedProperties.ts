@@ -36,6 +36,9 @@ const inferredDefinitionPriorities = {
 
 function getOccurrencePriority(occurrence: NestedPropertyOccurrence): number {
   if (occurrence.role === 'declaration') {
+    return 3;
+  }
+  if (occurrence.role === 'readWrite') {
     return 2;
   }
   return occurrence.role === 'write' ? 1 : 0;

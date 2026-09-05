@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { NavigationOccurrence } from '../src/core/navigation/types';
-import { filterReferenceOccurrences } from '../src/server/servicePlugin';
+import {
+  createUnusedComponentMemberDiagnostics,
+  filterReferenceOccurrences,
+} from '../src/server/servicePlugin';
 
 const occurrences: NavigationOccurrence[] = [
   { start: 10, end: 17, role: 'read' },
@@ -54,5 +57,34 @@ describe('reference occurrence filtering', () => {
       role: 'write',
       isDefinition: true,
     });
+  });
+});
+
+describe('unused component member diagnostics', () => {
+  it('creates a TypeScript-compatible hint at the member declaration', () => {
+    // Arrange
+    const members = [{ name: 'message', start: 10, end: 17 }];
+    const positionAt = (offset: number) => ({ line: 0, character: offset });
+
+    // Act
+    const diagnostics = createUnusedComponentMemberDiagnostics(
+      members,
+      positionAt,
+    );
+
+    // Assert
+    expect(diagnostics).toEqual([
+      {
+        severity: 4,
+        range: {
+          start: { line: 0, character: 10 },
+          end: { line: 0, character: 17 },
+        },
+        code: 6133,
+        source: 'riot_v3',
+        tags: [1],
+        message: "'message' is declared but its value is never read.",
+      },
+    ]);
   });
 });
