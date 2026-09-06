@@ -16,19 +16,27 @@ No project-local TypeScript installation is required. The extension uses the wor
 
 ## Configuration
 
-### Dynamic properties from any assignments
+Riot-specific settings are disabled by default:
 
-The language server keeps inferred object properties strict by default. Enable the following setting to allow dynamic child properties when a component property or nested property is also assigned a value inferred as `any`:
+| Setting | Default | Description |
+| --- | --- | --- |
+| `riotV3.allowDynamicPropertiesFromAnyAssignments` | `false` | Allows dynamic child properties through inferred objects and arrays when the property also receives an inferred `any` value. |
+| `riotV3.reportUnusedComponentMembers` | `false` | Reports component fields and methods that are not read within the same component. |
 
 ```json
 {
-  "riotV3.allowDynamicPropertiesFromAnyAssignments": true
+  "riotV3.allowDynamicPropertiesFromAnyAssignments": true,
+  "riotV3.reportUnusedComponentMembers": true
 }
 ```
 
-For example, if `this.data` is first assigned an object literal and is also assigned `this.opts.data`, known child properties keep their inferred types while other child properties are treated as `any`. A `null` or `undefined` initializer is preserved as a nullable dynamic object, so optional chaining may still be required. Properties without an inferred `any` assignment, primitive properties, and properties with explicit JSDoc types remain strict.
+Reload VS Code after changing these settings.
 
-Reload VS Code after changing this setting.
+### Setting behavior
+
+`allowDynamicPropertiesFromAnyAssignments` preserves known inferred child types while treating other child properties as `any`. It applies when a component property or nested property is also assigned a value inferred as `any`. A `null` or `undefined` initializer remains nullable, so optional chaining may still be required. Properties without an inferred `any` assignment, primitive properties, and properties with explicit JSDoc types remain strict.
+
+`reportUnusedComponentMembers` emits TypeScript-compatible 6133 hints for unused Riot component fields and methods. References from another component or file, including dynamic runtime access, are not considered. Keep the setting disabled when the project relies heavily on those patterns.
 
 ### TypeScript SDK
 

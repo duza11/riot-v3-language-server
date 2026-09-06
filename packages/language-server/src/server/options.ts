@@ -8,8 +8,15 @@ export function getRiotV3LanguageOptions(
     isRecord(initializationOptions.riotV3) &&
     initializationOptions.riotV3.allowDynamicPropertiesFromAnyAssignments ===
       true;
+  const reportUnusedComponentMembers =
+    isRecord(initializationOptions) &&
+    isRecord(initializationOptions.riotV3) &&
+    initializationOptions.riotV3.reportUnusedComponentMembers === true;
 
-  return { allowDynamicPropertiesFromAnyAssignments };
+  return {
+    allowDynamicPropertiesFromAnyAssignments,
+    reportUnusedComponentMembers,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

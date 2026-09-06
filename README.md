@@ -19,15 +19,23 @@ This repository contains a Volar-based language server for Riot.js v3 `.tag` fil
 
 ## Configuration
 
-Inferred object properties are strict by default. VS Code users can enable dynamic child properties for component properties or nested properties that receive an inferred `any` value. The setting applies recursively to inferred object and array shapes, including static index and computed property assignments. Known object shapes and `null` or `undefined` initializers are preserved:
+Riot-specific options are disabled by default:
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `riotV3.allowDynamicPropertiesFromAnyAssignments` | `false` | Allows dynamic child properties through inferred objects and arrays when the property also receives an inferred `any` value. Explicit JSDoc types remain authoritative. |
+| `riotV3.reportUnusedComponentMembers` | `false` | Reports component fields and methods that are not read within the same component. Cross-component and cross-file references are not considered. |
+
+VS Code users can configure both options in settings:
 
 ```json
 {
-  "riotV3.allowDynamicPropertiesFromAnyAssignments": true
+  "riotV3.allowDynamicPropertiesFromAnyAssignments": true,
+  "riotV3.reportUnusedComponentMembers": true
 }
 ```
 
-Standalone LSP clients can use `initializationOptions.riotV3.allowDynamicPropertiesFromAnyAssignments`. See the package READMEs for configuration details and embedded language settings.
+Standalone LSP clients can pass the corresponding keys under `initializationOptions.riotV3`. Restart the language server or reload VS Code after changing these options. See the package READMEs for detailed behavior and embedded language settings.
 
 ## Development
 

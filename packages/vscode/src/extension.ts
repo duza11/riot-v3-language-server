@@ -49,6 +49,10 @@ export async function activate(context: vscode.ExtensionContext) {
           'allowDynamicPropertiesFromAnyAssignments',
           false,
         ),
+        reportUnusedComponentMembers: riotV3Configuration.get(
+          'reportUnusedComponentMembers',
+          false,
+        ),
       },
     },
   };
