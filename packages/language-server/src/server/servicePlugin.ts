@@ -16,12 +16,15 @@ import {
   getRiotV3RenameRangeForAnalysis,
   type NavigationOccurrence,
 } from '../core/navigation';
+import type { RiotV3LanguageOptions } from '../core/options';
 import {
   getRiotV3DocumentContext,
   getRiotV3RootDocumentContext,
 } from './documentContext';
 
-export function createRiotV3ServicePlugin(): LanguageServicePlugin {
+export function createRiotV3ServicePlugin(
+  options: RiotV3LanguageOptions = {},
+): LanguageServicePlugin {
   return {
     capabilities: {
       diagnosticProvider: {
@@ -190,12 +193,16 @@ export function createRiotV3ServicePlugin(): LanguageServicePlugin {
               message: 'Only one style tag is allowed.',
             });
           }
-          errors.push(
-            ...createUnusedComponentMemberDiagnostics(
-              getUnusedRiotV3ComponentMembers(resolved.virtualCode.analysis),
-              (offset) => resolved.sourceDocument.positionAt(offset),
-            ),
-          );
+          if (options.reportUnusedComponentMembers) {
+            errors.push(
+              ...createUnusedComponentMemberDiagnostics(
+                getUnusedRiotV3ComponentMembers(
+                  resolved.virtualCode.analysis,
+                ),
+                (offset) => resolved.sourceDocument.positionAt(offset),
+              ),
+            );
+          }
           return errors.length ? errors : undefined;
         },
       };

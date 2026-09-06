@@ -45,19 +45,29 @@ Riot.js projects do not need to install TypeScript locally unless they want the 
 
 ## Configuration
 
-### Dynamic properties from any assignments
+Riot-specific initialization options are disabled by default:
 
-The language server keeps inferred object properties strict by default. Set `initializationOptions.riotV3.allowDynamicPropertiesFromAnyAssignments` to `true` to allow dynamic child properties when a component property or nested property is also assigned a value inferred as `any`. Dynamic access is propagated through inferred nested objects and array elements, including static index and computed property assignments.
+| Option under `initializationOptions.riotV3` | Default | Description |
+| --- | --- | --- |
+| `allowDynamicPropertiesFromAnyAssignments` | `false` | Allows dynamic child properties through inferred objects and arrays when the property also receives an inferred `any` value. |
+| `reportUnusedComponentMembers` | `false` | Reports component fields and methods that are not read within the same component. |
 
 ```lua
 init_options = {
   riotV3 = {
     allowDynamicPropertiesFromAnyAssignments = true,
+    reportUnusedComponentMembers = true,
   },
 }
 ```
 
-Known child properties keep their inferred types. A `null` or `undefined` initializer is preserved as a nullable dynamic object, so optional chaining may still be required. Properties without an inferred `any` assignment, primitive properties, and root or nested properties with explicit JSDoc types remain strict. Restart the language server after changing initialization options.
+Restart the language server after changing initialization options.
+
+### Option behavior
+
+`allowDynamicPropertiesFromAnyAssignments` propagates dynamic access through inferred nested objects and array elements, including static index and computed property assignments. Known child properties keep their inferred types. A `null` or `undefined` initializer is preserved as a nullable dynamic object, so optional chaining may still be required. Properties without an inferred `any` assignment, primitive properties, and root or nested properties with explicit JSDoc types remain strict.
+
+`reportUnusedComponentMembers` emits TypeScript-compatible 6133 hints for unused Riot component fields and methods. The analysis is intentionally component-local: references from another component or file, including dynamic runtime access, do not mark a member as used. Keep the option disabled when the project relies heavily on those patterns.
 
 ### Embedded languages
 
@@ -87,6 +97,7 @@ vim.lsp.config("riot_v3", {
     riotV3 = {
       -- Optional. Defaults to false.
       -- allowDynamicPropertiesFromAnyAssignments = true,
+      -- reportUnusedComponentMembers = true,
     },
   },
 })

@@ -107,11 +107,29 @@ describe('unused component member diagnostics', () => {
     expect(diagnostics).toBeUndefined();
   });
 
-  it('provides an unused member diagnostic from the root virtual document', async () => {
+  it('does not provide unused member diagnostics by default', async () => {
     // Arrange
     const source = `<root><script>unused() {}</script><script>const b = 1</script></root>`;
     const fixture = createServicePluginFixture(source);
     const service = createRiotV3ServicePlugin().create(fixture.context);
+    const document = fixture.getDocument('root');
+    // Act
+    const diagnostics = await service.provideDiagnostics?.(
+      document,
+      CancellationToken.None,
+    );
+
+    // Assert
+    expect(diagnostics).toBeUndefined();
+  });
+
+  it('provides an unused member diagnostic when enabled', async () => {
+    // Arrange
+    const source = `<root><script>unused() {}</script><script>const b = 1</script></root>`;
+    const fixture = createServicePluginFixture(source);
+    const service = createRiotV3ServicePlugin({
+      reportUnusedComponentMembers: true,
+    }).create(fixture.context);
     const document = fixture.getDocument('root');
     const start = source.indexOf('unused');
 

@@ -34,7 +34,7 @@ connection.onInitialize((params) => {
       createCssService(),
       createEmmetService(),
       ...createTypeScriptServices(tsdk.typescript),
-      createRiotV3ServicePlugin(),
+      createRiotV3ServicePlugin(riotV3Options),
     ],
   );
 });
