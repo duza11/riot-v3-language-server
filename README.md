@@ -91,4 +91,6 @@ The Nix package uses a slim Node.js runtime and bundles the fallback TypeScript 
 
 ## Repository
 
+See [Releases](docs/releases.md) for the publishing workflow and recovery steps.
+
 https://github.com/duza11/riot-v3-language-server
