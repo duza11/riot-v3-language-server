@@ -70,9 +70,9 @@
   "scripts": {
     "build": "node scripts/build -- --minify",
     "watch": "pnpm run build -- --watch",
-    "pack": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build && vsce package --pre-release --no-dependencies",
+    "pack": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build && vsce package --no-dependencies",
     "pack:labs": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build -- --volar-labs && vsce package --pre-release --no-dependencies",
-    "release": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build && vsce publish --pre-release --no-dependencies"
+    "release": "pnpm --filter @duza11/riot-v3-language-server build && pnpm run build && vsce publish --no-dependencies"
   },
   "devDependencies": {
     "@types/vscode": "^1.125.0",

@@ -18,6 +18,9 @@ jobs:
   release-pr:
     name: Release PR
     runs-on: ubuntu-latest
+    outputs:
+      release-created: ${{ steps.release.outputs['packages/language-server--release_created'] }}
+      tag-name: ${{ steps.release.outputs['packages/language-server--tag_name'] }}
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (
@@ -29,7 +32,22 @@ jobs:
 
     steps:
       - name: Run release-please
+        id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  dispatch-publish:
+    name: Start Publish
+    needs: release-pr
+    if: needs.release-pr.outputs.release-created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch Publish for the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-pr.outputs.tag-name }}
+        run: gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_TAG"
