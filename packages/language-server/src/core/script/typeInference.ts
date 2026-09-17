@@ -1,3 +1,4 @@
+import * as ts from 'typescript';
 import {
   isIdentifierPart,
   isIdentifierStart,
@@ -552,31 +553,8 @@ function inferExpressionType(text: string, start: number): string {
   if (text[start] === '{') {
     return inferObjectLiteralType(text, start);
   }
-  if (
-    text.startsWith('function', start) &&
-    !isIdentifierPart(text[start + 'function'.length] ?? '')
-  ) {
-    return '(...args: any[]) => any';
-  }
-  if (
-    text.startsWith('async', start) &&
-    !isIdentifierPart(text[start + 'async'.length] ?? '')
-  ) {
-    let cursor = start + 'async'.length;
-    while (cursor < text.length && /\s/.test(text[cursor])) {
-      cursor++;
-    }
-    if (
-      text.startsWith('function', cursor) ||
-      text[cursor] === '(' ||
-      isIdentifierStart(text[cursor])
-    ) {
-      return '(...args: any[]) => any';
-    }
-  }
   if (text[start] === '(' || isIdentifierStart(text[start])) {
-    const arrowOffset = findArrowAfterExpressionStart(text, start);
-    if (arrowOffset !== undefined) {
+    if (isAssignedFunctionExpression(text, start)) {
       return '(...args: any[]) => any';
     }
   }
@@ -820,25 +798,49 @@ export function isNumberLiteral(text: string): boolean {
   return /^-?(?:\d+|\d*\.\d+)$/.test(text);
 }
 
-function findArrowAfterExpressionStart(
-  text: string,
-  start: number,
-): number | undefined {
-  for (let offset = start; offset < text.length; ) {
+function isAssignedFunctionExpression(text: string, start: number): boolean {
+  // Limit parsing to this assignment, not the remainder of the component script.
+  let offset = start;
+  while (offset < text.length) {
     const char = text[offset];
     const skipped = scanJavaScriptNonCode(text, offset);
     if (skipped !== undefined) {
       offset = skipped;
       continue;
     }
-    if (char === '=' && text[offset + 1] === '>') {
-      return offset;
+    if (char === '(' || char === '[' || char === '{') {
+      const close = char === '(' ? ')' : char === '[' ? ']' : '}';
+      const end = scanBalanced(text, offset, char, close);
+      if (end === undefined) {
+        return false;
+      }
+      offset = end;
+      continue;
     }
-    if (char === '\n' || char === ';') {
-      return;
+    if ('\n\r;,}]'.includes(char)) {
+      break;
     }
     offset++;
   }
+  const sourceFile = ts.createSourceFile(
+    'assignment.ts',
+    `const value = ${text.slice(start, offset)}`,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS,
+  );
+  const statement = sourceFile.statements[0];
+  if (!statement || !ts.isVariableStatement(statement)) {
+    return false;
+  }
+  let expression = statement.declarationList.declarations[0]?.initializer;
+  while (expression && ts.isParenthesizedExpression(expression)) {
+    expression = expression.expression;
+  }
+  return (
+    !!expression &&
+    (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))
+  );
 }
 
 export function isValidIdentifier(text: string): boolean {
