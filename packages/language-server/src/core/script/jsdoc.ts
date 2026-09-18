@@ -111,22 +111,34 @@ export function inferJSDocRiotMethodType(
 }
 
 export function parseJSDocType(comment: string): string | undefined {
-  const tag = /@type\b/.exec(comment);
-  if (!tag) {
-    return;
+  return parseTypedJSDocTags(comment).find((tag) => tag.kind === 'type')
+    ?.typeName;
+}
+
+function parseTypedJSDocTags(comment: string): {
+  kind: string;
+  typeName: string;
+  name?: string;
+}[] {
+  const text = comment.replace(/^[\t ]*\*(?!\/)[\t ]?/gm, '');
+  const pattern = /@(type|param|returns?|typedef|property)\b\s*\{/g;
+  const tags: { kind: string; typeName: string; name?: string }[] = [];
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
+    const start = pattern.lastIndex - 1;
+    // A type may contain nested object literals and braces inside string literals.
+    const end = scanBalanced(text, start, '{', '}');
+    if (end === undefined) {
+      continue;
+    }
+    const typeName = text.slice(start + 1, end - 1).trim();
+    if (!typeName) {
+      continue;
+    }
+    const name = /^\s*\[?([A-Za-z_$][\w$]*)/.exec(text.slice(end))?.[1];
+    tags.push({ kind: match[1], typeName, name });
+    pattern.lastIndex = end;
   }
-  let typeStart = tag.index + tag[0].length;
-  while (typeStart < comment.length && /\s/.test(comment[typeStart])) {
-    typeStart++;
-  }
-  if (comment[typeStart] !== '{') {
-    return;
-  }
-  const typeEnd = scanBalanced(comment, typeStart, '{', '}');
-  if (typeEnd === undefined) {
-    return;
-  }
-  return comment.slice(typeStart + 1, typeEnd - 1).trim() || undefined;
+  return tags;
 }
 
 export function parseRiotMethodParameters(
@@ -251,16 +263,15 @@ export function parseJSDocFunctionTypes(jsDoc: string): {
   returnType?: string;
 } {
   const params = new Map<string, string>();
-  const paramPattern =
-    /@param\s*\{([^}]+)\}\s+(?:\[?([A-Za-z_$][\w$]*)[^\]\s]*\]?)/g;
-  for (
-    let match = paramPattern.exec(jsDoc);
-    match;
-    match = paramPattern.exec(jsDoc)
-  ) {
-    params.set(match[2], match[1].trim());
+  const tags = parseTypedJSDocTags(jsDoc);
+  for (const tag of tags) {
+    if (tag.kind === 'param' && tag.name) {
+      params.set(tag.name, tag.typeName);
+    }
   }
-  const returnType = jsDoc.match(/@returns?\s*\{([^}]+)\}/)?.[1]?.trim();
+  const returnType = tags.find(
+    (tag) => tag.kind === 'return' || tag.kind === 'returns',
+  )?.typeName;
   return {
     params,
     returnType,
@@ -268,19 +279,18 @@ export function parseJSDocFunctionTypes(jsDoc: string): {
 }
 
 function parseJSDocTypedefs(comment: string): JSDocTypedef[] {
-  const properties = [
-    ...comment.matchAll(
-      /@property\s*\{([^}]+)\}\s*\[?([A-Za-z_$][\w$]*)(?:=[^\]\s]+)?\]?/g,
-    ),
-  ].map(([, typeName, name]) => ({
-    name,
-    typeName: typeName.trim(),
-  }));
+  const tags = parseTypedJSDocTags(comment);
+  const properties = tags.flatMap((tag) =>
+    tag.kind === 'property' && tag.name
+      ? [{ name: tag.name, typeName: tag.typeName }]
+      : [],
+  );
   const typedefs: JSDocTypedef[] = [];
-  for (const [, baseTypeName, name] of comment.matchAll(
-    /@typedef\s*\{([^}]+)\}\s*([A-Za-z_$][\w$]*)/g,
-  )) {
-    const typeName = baseTypeName.trim();
+  for (const tag of tags) {
+    if (tag.kind !== 'typedef' || !tag.name) {
+      continue;
+    }
+    const { typeName, name } = tag;
     typedefs.push({
       name,
       typeName: properties.length
