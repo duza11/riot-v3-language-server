@@ -78,7 +78,7 @@
     "@types/vscode": "^1.125.0",
     "@volar/language-server": "~2.4.28",
     "@volar/vscode": "~2.4.28",
-    "@vscode/vsce": "^3.9.2",
+    "@vscode/vsce": "^4.0.0",
     "esbuild": "0.28.2"
   }
 }
