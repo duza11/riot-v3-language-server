@@ -19,7 +19,7 @@
     "update:nix-deps": "node scripts/update-nix-pnpm-hash.js"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
+    "@biomejs/biome": "2.5.13",
     "@types/node": "latest",
     "typescript": "latest",
     "vitest": "^5.0.0"

@@ -37,7 +37,7 @@
                 ;
               inherit pnpm;
               fetcherVersion = 4;
-              hash = "sha256-phAmVhRPTbn7DhS0ql9sEBD5LyAwIdkYbEe6Dd5ZQA4=";
+              hash = "sha256-iH85UJKVdXEG+EibnoKdvUkSY7DgKNjw8JXlGP3VaVI=";
             };
 
             nativeBuildInputs = [
