@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.1](https://github.com/duza11/riot-v3-language-server/compare/v1.0.0...v1.0.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* distinguish callback arguments from assigned functions ([e6052d0](https://github.com/duza11/riot-v3-language-server/commit/e6052d00206a1885c4ca66e42181cb2a4d1589e8))
+* distinguish callback arguments from assigned functions ([e07af62](https://github.com/duza11/riot-v3-language-server/commit/e07af62c8ab071773db421d4780c0a121e578bea))
+* preserve nested types in JSDoc annotations ([bf27306](https://github.com/duza11/riot-v3-language-server/commit/bf273064b9af47f3c9a2897be14370c1ae5a2686))
+* preserve nested types in JSDoc annotations ([2cfd707](https://github.com/duza11/riot-v3-language-server/commit/2cfd70793790c5262b0e97b538e8f88f63bcad66))
+
 ## [1.0.0](https://github.com/duza11/riot-v3-language-server/compare/v0.0.1...v1.0.0) (2026-09-11)
 
 
