@@ -47,7 +47,7 @@
   "dependencies": {
     "@volar/language-core": "~2.4.28",
     "@volar/language-server": "~2.4.28",
-    "@volar/typescript": "~2.4.28",
+    "@volar/typescript": "~2.4.30",
     "typescript": "^6.0.3",
     "volar-service-css": "^0.0.71",
     "volar-service-emmet": "^0.0.71",
